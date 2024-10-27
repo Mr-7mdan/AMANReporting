@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>KPI Configuration</h2>
+    <a href="{{ url_for('stats') }}" class="btn btn-secondary">Back to Stats</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title mb-0">
+            <span id="form-title">Add New KPI</span>
+        </h3>
+    </div>
+    <div class="card-body">
+        <form id="kpi-form" method="POST">
+            <input type="hidden" id="kpi_id" name="kpi_id" value="">
+            
+            <div class="form-group">
+                <label for="kpi_name">KPI Name</label>
+                <input type="text" class="form-control" id="kpi_name" name="kpi_name" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="table_name">Table</label>
+                <select class="form-control" id="table_name" name="table_name" required>
+                    <option value="">Select a table</option>
+                    {% for table in available_tables %}
+                    <option value="{{ table }}">{{ table }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Calculation Steps</label>
+                <div id="calculation-steps-container">
+                    <div class="calculation-step mb-3">
+                        <div class="row align-items-center">
+                            <div class="col-md-3">
+                                <select class="form-control step-type" required>
+                                    <option value="field">Database Field</option>
+                                    <option value="constant">Constant Value</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 field-input">
+                                <select class="form-control calculation-field" disabled>
+                                    <option value="">Select a table first</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 constant-input" style="display: none;">
+                                <input type="number" class="form-control" placeholder="Enter value">
+                            </div>
+                            <div class="col-md-2">
+                                <select class="form-control calculation-method" required>
+                                    {% for method in calculation_methods %}
+                                    <option value="{{ method }}">{{ method }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3 operator-section" style="display: none;">
+                                <select class="form-control step-operator">
+                                    <option value="+">Add (+)</option>
+                                    <option value="-">Subtract (-)</option>
+                                    <option value="*">Multiply (×)</option>
+                                    <option value="/">Divide (÷)</option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <button type="button" class="btn btn-danger remove-step">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary mt-2" id="add-calculation-step">Add Calculation Step</button>
+            </div>
+            
+            <div class="form-group">
+                <label for="date_column">Date Column</label>
+                <select class="form-control" id="date_column" name="date_column" required disabled>
+                    <option value="">Select a table first</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Time Spans</label>
+                {% for pair in time_span_pairs %}
+                <div class="custom-control custom-checkbox">
+                    <input type="checkbox" class="custom-control-input time-span-checkbox" 
+                           id="time_span_{{ loop.index0 }}" 
+                           name="time_span_{{ loop.index0 }}"
+                           value='{{ pair|tojson|safe }}'>
+                    <label class="custom-control-label" for="time_span_{{ loop.index0 }}">
+                        {{ pair[0] }} vs {{ pair[1] }}
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="form-group">
+                <label>Conditions</label>
+                <div id="conditions-container">
+                    <div class="condition-row mb-2">
+                        <div class="row">
+                            <div class="col">
+                                <select class="form-control condition-field" name="conditions[]" disabled>
+                                    <option value="">Select a table first</option>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <select class="form-control condition-operator" name="conditions[]">
+                                    <option value="=">=</option>
+                                    <option value="!=">!=</option>
+                                    <option value=">">&gt;</option>
+                                    <option value=">=">&gt;=</option>
+                                    <option value="<">&lt;</option>
+                                    <option value="<=">&lt;=</option>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <input type="text" class="form-control condition-value" name="conditions[]" placeholder="Value">
+                            </div>
+                            <div class="col-auto">
+                                <button type="button" class="btn btn-danger remove-condition">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary mt-2" id="add-condition">Add Condition</button>
+            </div>
+            
+            <div class="btn-group">
+                <button type="submit" class="btn btn-primary" id="save-btn">Save KPI</button>
+                <button type="button" class="btn btn-secondary" id="cancel-btn" style="display: none;">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<h3>Existing KPIs</h3>
+{% if kpis %}
+<div class="table-responsive">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Table</th>
+                <th>Calculation</th>
+                <th>Date Column</th>
+                <th>Time Spans</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for kpi in kpis %}
+            <tr>
+                <td>{{ kpi.name }}</td>
+                <td>{{ kpi.table_name }}</td>
+                <td>{{ kpi.calculation_method }} of {{ kpi.calculation_field }}</td>
+                <td>{{ kpi.date_column }}</td>
+                <td>
+                    {% set spans = kpi.time_spans|from_json %}
+                    {% for span in spans %}
+                        {{ span[0] }} vs {{ span[1] }}{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                </td>
+                <td>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-primary btn-sm edit-kpi" 
+                                data-kpi='{{ kpi|tojson|safe }}'
+                                onclick="editKPI(this)">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <form action="{{ url_for('delete_kpi', kpi_id=kpi.id) }}" method="POST" 
+                              class="d-inline"
+                              onsubmit="return confirm('Are you sure you want to delete this KPI?');">
+                            <button type="submit" class="btn btn-danger btn-sm">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p>No KPIs configured yet.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+$(document).ready(function() {
+    // Handle table selection
+    $('#table_name').change(function() {
+        console.log('Table selection changed');
+        var tableName = $(this).val();
+        if (tableName) {
+            console.log('Loading columns for table:', tableName);
+            $.getJSON(`/get_table_columns/${tableName}`, function(columns) {
+                console.log('Received columns:', columns);
+                // Update all calculation field selects in all steps
+                $('.calculation-field').each(function() {
+                    const fieldSelect = $(this);
+                    fieldSelect.empty().append('<option value="">Select a field</option>');
+                    columns.forEach(function(column) {
+                        fieldSelect.append(new Option(column, column));
+                    });
+                    fieldSelect.prop('disabled', false);
+                });
+                
+                // Update date column select
+                var dateSelect = $('#date_column');
+                dateSelect.empty().append('<option value="">Select a date column</option>');
+                columns.forEach(function(column) {
+                    dateSelect.append(new Option(column, column));
+                });
+                dateSelect.prop('disabled', false);
+                
+                // Update condition fields
+                $('.condition-field').each(function() {
+                    const conditionField = $(this);
+                    conditionField.empty().append('<option value="">Select a field</option>');
+                    columns.forEach(function(column) {
+                        conditionField.append(new Option(column, column));
+                    });
+                    conditionField.prop('disabled', false);
+                });
+                
+                // If we're editing, set the saved values
+                if (window.editingKPI) {
+                    console.log('Setting saved values for editing KPI');
+                    dateSelect.val(window.editingKPI.date_column);
+                    
+                    // Set calculation fields for each step
+                    if (window.editingKPI.calculation_steps) {
+                        const steps = JSON.parse(window.editingKPI.calculation_steps);
+                        $('.calculation-step').each(function(index) {
+                            if (index < steps.length && steps[index].type === 'field') {
+                                $(this).find('.calculation-field').val(steps[index].field);
+                                $(this).find('.calculation-method').val(steps[index].method);
+                            }
+                        });
+                    }
+                }
+            }).fail(function(error) {
+                console.error('Error loading columns:', error);
+            });
+        }
+    });
+
+    // Handle step type change
+    $(document).on('change', '.step-type', function() {
+        const step = $(this).closest('.calculation-step');
+        const fieldInput = step.find('.field-input');
+        const constantInput = step.find('.constant-input');
+        const calculationMethod = step.find('.calculation-method');
+        
+        if ($(this).val() === 'constant') {
+            fieldInput.hide();
+            constantInput.show();
+            calculationMethod.prop('disabled', true);
+        } else {
+            fieldInput.show();
+            constantInput.hide();
+            calculationMethod.prop('disabled', false);
+        }
+    });
+
+    // Add new calculation step
+    $('#add-calculation-step').click(function() {
+        const stepsContainer = $('#calculation-steps-container');
+        const newStep = stepsContainer.children().first().clone();
+        
+        // Show operator section for subsequent steps
+        newStep.find('.operator-section').show();
+        
+        // Reset values
+        newStep.find('select').prop('selectedIndex', 0);
+        newStep.find('input').val('');
+        
+        stepsContainer.append(newStep);
+    });
+
+    // Remove calculation step
+    $(document).on('click', '.remove-step', function() {
+        const stepsContainer = $('#calculation-steps-container');
+        if (stepsContainer.children().length > 1) {
+            $(this).closest('.calculation-step').remove();
+        }
+    });
+
+    // Modify form submission to handle calculation steps
+    $('#kpi-form').on('submit', function(e) {
+        const calculationSteps = [];
+        $('.calculation-step').each(function(index) {
+            const step = $(this);
+            const stepType = step.find('.step-type').val();
+            const stepData = {
+                type: stepType,
+                operator: index === 0 ? null : step.find('.step-operator').val()
+            };
+            
+            if (stepType === 'field') {
+                stepData.field = step.find('.calculation-field').val();
+                stepData.method = step.find('.calculation-method').val();
+            } else {
+                stepData.value = step.find('.constant-input input').val();
+            }
+            
+            calculationSteps.push(stepData);
+        });
+        
+        // Add hidden input for calculation steps
+        $('<input>').attr({
+            type: 'hidden',
+            name: 'calculation_steps',
+            value: JSON.stringify(calculationSteps)
+        }).appendTo(this);
+    });
+});
+
+// Add form submission handler
+$('#kpi-form').on('submit', function(e) {
+    console.log('Form submitted');
+    
+    // Get selected time spans
+    var selectedTimeSpans = [];
+    $('.time-span-checkbox:checked').each(function() {
+        console.log('Checked checkbox value:', $(this).val());
+        try {
+            var spanPair = JSON.parse($(this).val());
+            selectedTimeSpans.push(spanPair);
+            console.log('Added span pair:', spanPair);
+        } catch (e) {
+            console.error('Error parsing time span:', e);
+        }
+    });
+
+    console.log('Selected time spans:', selectedTimeSpans);
+
+    // Validate at least one time span is selected
+    if (selectedTimeSpans.length === 0) {
+        e.preventDefault();
+        alert('Please select at least one time span');
+        return false;
+    }
+
+    return true;
+});
+
+function editKPI(button) {
+    try {
+        console.log('Starting editKPI function');
+        console.log('Raw data-kpi attribute:', button.getAttribute('data-kpi'));
+        const kpiData = JSON.parse(button.getAttribute('data-kpi'));
+        console.log('Parsed KPI Data:', kpiData);
+        window.editingKPI = kpiData;
+        
+        // Update form title and button
+        document.getElementById('form-title').textContent = 'Edit KPI';
+        document.getElementById('save-btn').textContent = 'Update KPI';
+        document.getElementById('cancel-btn').style.display = 'inline-block';
+        
+        // Populate form fields
+        document.getElementById('kpi_id').value = kpiData.id;
+        document.getElementById('kpi_name').value = kpiData.name;
+        document.getElementById('calculation_method').value = kpiData.calculation_method;
+        
+        // Set table and trigger change event
+        const tableSelect = document.getElementById('table_name');
+        console.log('Setting table name:', kpiData.table_name);
+        tableSelect.value = kpiData.table_name;
+        
+        // Function to set field values after columns are loaded
+        function setFieldValues() {
+            console.log('Setting field values');
+            try {
+                // Set calculation field
+                const calculationField = document.getElementById('calculation_field');
+                calculationField.value = kpiData.calculation_field;
+                console.log('Set calculation field:', kpiData.calculation_field);
+                
+                // Set date column
+                const dateColumn = document.getElementById('date_column');
+                dateColumn.value = kpiData.date_column;
+                console.log('Set date column:', kpiData.date_column);
+                
+                // Enable the fields
+                calculationField.disabled = false;
+                dateColumn.disabled = false;
+                
+                // Set time spans
+                try {
+                    const timeSpans = JSON.parse(kpiData.time_spans);
+                    console.log('Setting time spans:', timeSpans);
+                    document.querySelectorAll('.time-span-checkbox').forEach(checkbox => {
+                        try {
+                            const checkboxValue = JSON.parse(checkbox.value);
+                            const isChecked = timeSpans.some(span => 
+                                JSON.stringify(span) === JSON.stringify(checkboxValue)
+                            );
+                            checkbox.checked = isChecked;
+                            console.log('Checkbox value:', checkboxValue, 'Checked:', isChecked);
+                        } catch (e) {
+                            console.error('Error parsing checkbox value:', e);
+                        }
+                    });
+                } catch (e) {
+                    console.error('Error setting time spans:', e);
+                }
+                
+                // Set conditions
+                try {
+                    const conditions = JSON.parse(kpiData.conditions);
+                    console.log('Setting conditions:', conditions);
+                    const container = document.getElementById('conditions-container');
+                    container.innerHTML = ''; // Clear existing conditions
+                    
+                    if (conditions.length > 0) {
+                        conditions.forEach(condition => {
+                            const row = addConditionRow();
+                            const fieldSelect = row.querySelector('.condition-field');
+                            const operatorSelect = row.querySelector('.condition-operator');
+                            const valueInput = row.querySelector('.condition-value');
+                            
+                            fieldSelect.disabled = false;
+                            fieldSelect.value = condition.field;
+                            operatorSelect.value = condition.operator;
+                            valueInput.value = condition.value;
+                            console.log('Added condition:', condition);
+                        });
+                    } else {
+                        addConditionRow();
+                    }
+                } catch (e) {
+                    console.error('Error setting conditions:', e);
+                    addConditionRow();
+                }
+            } catch (e) {
+                console.error('Error in setFieldValues:', e);
+            }
+        }
+        
+        // Trigger table change and set values after columns are loaded
+        console.log('Triggering table change event');
+        $(tableSelect).trigger('change');
+        
+        // Wait for columns to load before setting values
+        setTimeout(() => {
+            console.log('Setting field values after delay');
+            setFieldValues();
+        }, 1000);  // Increased timeout to 1 second
+        
+        // Scroll to form
+        document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+        
+    } catch (e) {
+        console.error('Error in editKPI:', e);
+        console.error('Raw data that failed to parse:', button.getAttribute('data-kpi'));
+    }
+}
+
+function addConditionRow() {
+    const container = document.getElementById('conditions-container');
+    const template = document.querySelector('.condition-row').cloneNode(true);
+    container.appendChild(template);
+    return template;
+}
+
+document.getElementById('cancel-btn').addEventListener('click', function() {
+    // Reset form
+    document.getElementById('kpi-form').reset();
+    document.getElementById('kpi_id').value = '';
+    document.getElementById('form-title').textContent = 'Add New KPI';
+    document.getElementById('save-btn').textContent = 'Save KPI';
+    this.style.display = 'none';
+    window.editingKPI = null;  // Clear editing state
+    
+    // Reset conditions
+    const container = document.getElementById('conditions-container');
+    container.innerHTML = '';
+    addConditionRow();
+});
+
+// Add condition button handler
+document.getElementById('add-condition').addEventListener('click', function() {
+    addConditionRow();
+});
+</script>
+{% endblock %}

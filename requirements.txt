@@ -1,0 +1,26 @@
+# Core dependencies
+setuptools>=68.0.0
+numpy>=1.26.0
+cython>=3.0.0
+
+# Database dependencies
+SQLAlchemy>=2.0.0
+PyMySQL>=1.1.0
+pyodbc>=5.0.0
+# pymssql>=2.2.2  # Removing this as it's causing issues
+python-tds>=1.12.0  # Adding this as an alternative to pymssql
+
+# Data processing
+pandas>=2.1.0
+
+# Web and scheduling
+flask>=3.0.0
+python-dotenv>=1.0.0
+apscheduler>=3.10.0
+# --find-links https://download.pytorch.org/whl/torch_stable.html
+# --extra-index-url https://pypi.anaconda.org/scipy-wheels-nightly/simple
+
+
+
+
+

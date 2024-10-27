@@ -1,0 +1,46 @@
+<div class="overflow-x-auto">
+    <table class="min-w-full bg-white">
+        <thead class="bg-gray-800 text-white">
+            <tr>
+                <th class="sticky left-0 bg-gray-800 px-4 py-2">ATM Name</th>
+                <th class="px-4 py-2">Bank</th>
+                <th class="px-4 py-2">Last Replenishment</th>
+                <th class="px-4 py-2">Cassette 1 Inventory</th>
+                <th class="px-4 py-2">Cassette 1 Reject</th>
+                <th class="px-4 py-2">Cassette 2 Inventory</th>
+                <th class="px-4 py-2">Cassette 2 Reject</th>
+                <th class="px-4 py-2">Cassette 3 Inventory</th>
+                <th class="px-4 py-2">Cassette 3 Reject</th>
+                <th class="px-4 py-2">Cassette 4 Inventory</th>
+                <th class="px-4 py-2">Cassette 4 Reject</th>
+                <th class="px-4 py-2">Cassette 1 Last Top Up</th>
+                <th class="px-4 py-2">Cassette 2 Last Top Up</th>
+                <th class="px-4 py-2">Cassette 3 Last Top Up</th>
+                <th class="px-4 py-2">Cassette 4 Last Top Up</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for atm in atms %}
+            <tr class="hover:bg-gray-100 cursor-pointer"
+                hx-get="/atm_details/{{ atm.ATM_Name }}"
+                hx-target="#modal-content">
+                <td class="sticky left-0 bg-white border px-4 py-2">{{ atm.ATM_Name }}</td>
+                <td class="border px-4 py-2">{{ atm.Bank }}</td>
+                <td class="border px-4 py-2">{{ atm.LastReplenishmentDate }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette1Inventory }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette1Reject }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette2Inventory }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette2Reject }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette3Inventory }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette3Reject }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette4Inventory }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette4Reject }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette1LastTopUp }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette2LastTopUp }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette3LastTopUp }}</td>
+                <td class="border px-4 py-2">{{ atm.Cassette4LastTopUp }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

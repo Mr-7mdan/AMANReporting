@@ -1,0 +1,28 @@
+<div class="p-4">
+    <h2 class="text-2xl font-bold mb-4">{{ atm_name }} - Last 30 Visits</h2>
+    <table class="min-w-full bg-white">
+        <thead class="bg-gray-800 text-white">
+            <tr>
+                <th class="px-4 py-2">Date</th>
+                <th class="px-4 py-2">Visit Type</th>
+                <th class="px-4 py-2">Cassette 1</th>
+                <th class="px-4 py-2">Cassette 2</th>
+                <th class="px-4 py-2">Cassette 3</th>
+                <th class="px-4 py-2">Cassette 4</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for visit in visits %}
+            <tr>
+                <td class="border px-4 py-2">{{ visit.RecordDateEntry }}</td>
+                <td class="border px-4 py-2">{{ visit.VisitType }}</td>
+                <td class="border px-4 py-2">{{ visit.Cassette1Inventory }} ({{ visit.Cassette1Reject }} reject)</td>
+                <td class="border px-4 py-2">{{ visit.Cassette2Inventory }} ({{ visit.Cassette2Reject }} reject)</td>
+                <td class="border px-4 py-2">{{ visit.Cassette3Inventory }} ({{ visit.Cassette3Reject }} reject)</td>
+                <td class="border px-4 py-2">{{ visit.Cassette4Inventory }} ({{ visit.Cassette4Reject }} reject)</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button onclick="closeModal()" class="mt-4 bg-blue-500 text-white p-2 rounded">Close</button>
+</div>

@@ -1,0 +1,978 @@
+{% extends "base.html" %}
+
+{% block head %}
+{{ super() }}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+.chart-card {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+    background: white;
+}
+
+.chart-card .card-header {
+    padding: 1rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chart-preview {
+    height: 300px;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 0 0 8px 8px;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.select2-container {
+    width: 100% !important;
+}
+
+.grouping-options {
+    display: none;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.grouping-options.active {
+    display: block;
+}
+
+.measure-step {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.measure-step .remove-step {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+}
+
+.chart-type-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.chart-type-option {
+    text-align: center;
+    padding: 1rem;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.chart-type-option:hover {
+    border-color: #0d6efd;
+    background: #f8f9fa;
+}
+
+.chart-type-option.selected {
+    border-color: #0d6efd;
+    background: #e7f1ff;
+}
+
+.chart-type-option i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    color: #0d6efd;
+}
+
+.chart-type-option span {
+    display: block;
+    font-size: 0.9rem;
+}
+
+/* Toggle switch for chart enable/disable */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: #2196F3;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+/* Add styles for chart badges */
+.chart-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #eee;
+}
+
+.time-span-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    color: #6c757d;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.condition-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 10px;
+    color: white;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-weight: 500;
+}
+
+.condition-badge i {
+    font-size: 0.6rem;
+}
+
+/* Condition badge colors based on operator */
+.condition-badge[data-operator="="] { background-color: #0d6efd; }
+.condition-badge[data-operator="!="] { background-color: #dc3545; }
+.condition-badge[data-operator=">"] { background-color: #198754; }
+.condition-badge[data-operator=">="] { background-color: #20c997; }
+.condition-badge[data-operator="<"] { background-color: #fd7e14; }
+.condition-badge[data-operator="<="] { background-color: #ffc107; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Chart Configuration</h2>
+    <div class="btn-group">
+        <a href="{{ url_for('stats') }}" class="btn btn-secondary">Back to Stats</a>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addChartModal">
+            <i class="fas fa-plus"></i> Add Chart
+        </button>
+    </div>
+</div>
+
+<!-- Existing Charts -->
+<div class="charts-list">
+    {% if charts %}
+        {% for chart in charts %}
+        <div class="chart-card" data-chart-id="{{ chart.id }}">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-start w-100">
+                    <div class="flex-grow-1">
+                        <h3 class="mb-0">{{ chart.name }}</h3>
+                        <div class="chart-badges">
+                            {% if chart.time_spans %}
+                                {% for span in chart.time_spans %}
+                                    <span class="time-span-badge">
+                                        {{ span[0]|abbreviate_timespan }} vs {{ span[1]|abbreviate_timespan }}
+                                    </span>
+                                {% endfor %}
+                            {% endif %}
+                            
+                            {% if chart.y_axis %}
+                                {% for measure in chart.y_axis %}
+                                    {% if measure.conditions %}
+                                        {% for condition in measure.conditions %}
+                                            <div class="condition-badge" data-operator="{{ condition.operator }}">
+                                                <i class="fas fa-filter"></i>
+                                                {{ condition.field }} {{ condition.operator|operator_symbol }} {{ condition.value }}
+                                            </div>
+                                        {% endfor %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="btn-group ms-3">
+                        <label class="toggle-switch">
+                            <input type="checkbox" class="chart-toggle" 
+                                   {% if chart.is_enabled %}checked{% endif %}
+                                   onchange="toggleChart({{ chart.id }})">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <button class="btn btn-outline-primary btn-sm" onclick="editChart({{ chart.id }})">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteChart({{ chart.id }})">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-preview" id="chart-preview-{{ chart.id }}">
+                <!-- Chart will be rendered here -->
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info">
+            No charts configured yet. Click "Add Chart" to create your first chart.
+        </div>
+    {% endif %}
+</div>
+
+<!-- Add/Edit Chart Modal -->
+<div class="modal fade" id="addChartModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="chartModalTitle">Add New Chart</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="chartForm">
+                    <input type="hidden" id="chart_id" name="chart_id">
+                    
+                    <div class="form-group">
+                        <label for="chart_name">Chart Name</label>
+                        <input type="text" class="form-control" id="chart_name" name="chart_name" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="table_name">Data Source</label>
+                        <select class="form-control" id="table_name" name="table_name" required>
+                            <option value="">Select a table</option>
+                            {% for table in available_tables %}
+                            <option value="{{ table }}">{{ table }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>X-Axis Configuration</label>
+                        <select class="form-control" id="x_axis_field" name="x_axis_field" required disabled>
+                            <option value="">Select a table first</option>
+                        </select>
+                        
+                        <div id="grouping_options" class="grouping-options">
+                            <label>Grouping Options</label>
+                            <div id="date_grouping" style="display: none;">
+                                <select class="form-control" name="date_grouping">
+                                    <option value="day">Day Number (01-31)</option>
+                                    <option value="weekday">Day Name (Sun-Sat)</option>
+                                    <option value="month">Month Name (Jan-Dec)</option>
+                                    <option value="quarter">Quarter (Q1-Q4)</option>
+                                    <option value="year">Year (YYYY)</option>
+                                </select>
+                            </div>
+                            <div id="numeric_grouping" style="display: none;">
+                                <div class="input-group">
+                                    <span class="input-group-text">Span Size</span>
+                                    <input type="number" class="form-control" name="span_size" min="1">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Y-Axis Measures</label>
+                        <div id="measure_steps">
+                            <div class="measure-step">
+                                <!-- Calculation Steps -->
+                                <div class="calculation-steps">
+                                    <div class="calculation-step">
+                                        <div class="row align-items-center">
+                                            <div class="col-md-5">
+                                                <select class="form-control calculation-field" disabled>
+                                                    <option value="">Select a table first</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <select class="form-control calculation-method">
+                                                    <option value="Count">Count</option>
+                                                    <option value="Sum">Sum</option>
+                                                    <option value="Average">Average</option>
+                                                    <option value="Minimum">Minimum</option>
+                                                    <option value="Maximum">Maximum</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <button type="button" class="btn btn-danger remove-step">&times;</button>
+                                            </div>
+                                            
+                                            <!-- Operator (hidden for first step) -->
+                                            <div class="col-12 operator-section mt-2" style="display: none;">
+                                                <select class="form-control step-operator">
+                                                    <option value="+">Add (+)</option>
+                                                    <option value="-">Subtract (-)</option>
+                                                    <option value="*">Multiply (×)</option>
+                                                    <option value="/">Divide (÷)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-sm mt-2 add-calculation-step">
+                                    <i class="fas fa-plus"></i> Add Calculation Step
+                                </button>
+
+                                <!-- Conditions for the entire measure -->
+                                <div class="measure-conditions mt-3">
+                                    <label>Measure Conditions</label>
+                                    <div class="conditions-container">
+                                        <div class="condition-row">
+                                            <div class="row">
+                                                <div class="col">
+                                                    <select class="form-control condition-field" disabled>
+                                                        <option value="">Select a table first</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col">
+                                                    <select class="form-control condition-operator">
+                                                        <option value="=">=</option>
+                                                        <option value="!=">!=</option>
+                                                        <option value=">">&gt;</option>
+                                                        <option value=">=">&gt;=</option>
+                                                        <option value="<">&lt;</option>
+                                                        <option value="<=">&lt;=</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col">
+                                                    <input type="text" class="form-control condition-value" placeholder="Value">
+                                                </div>
+                                                <div class="col-auto">
+                                                    <button type="button" class="btn btn-danger remove-condition">&times;</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary btn-sm mt-2 add-condition">
+                                        <i class="fas fa-plus"></i> Add Condition
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-secondary mt-3" id="add_measure_step">
+                            <i class="fas fa-plus"></i> Add Measure
+                        </button>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Chart Type</label>
+                        <div class="chart-type-selector">
+                            {% for type in chart_types %}
+                            <div class="chart-type-option" data-type="{{ type.id }}">
+                                {% if type.id == 'column' %}
+                                    <i class="fas fa-chart-bar"></i>
+                                {% elif type.id == 'stacked_column' %}
+                                    <i class="fas fa-layer-group"></i>
+                                {% elif type.id == 'bar' %}
+                                    <i class="fas fa-chart-bar fa-rotate-90"></i>
+                                {% elif type.id == 'line' %}
+                                    <i class="fas fa-chart-line"></i>
+                                {% elif type.id == 'scatter' %}
+                                    <i class="fas fa-braille"></i>
+                                {% elif type.id == 'pie' %}
+                                    <i class="fas fa-chart-pie"></i>
+                                {% endif %}
+                                <span>{{ type.name }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <!-- Add this after the Chart Type section -->
+                    <div class="form-group">
+                        <label>Time Span Comparison (Optional)</label>
+                        <div class="time-spans-container">
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input time-span-checkbox" 
+                                       id="time_span_0" name="time_span_0"
+                                       value='["Today", "Yesterday"]'>
+                                <label class="custom-control-label" for="time_span_0">
+                                    Today vs Yesterday
+                                </label>
+                            </div>
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input time-span-checkbox" 
+                                       id="time_span_1" name="time_span_1"
+                                       value='["Month to Date", "Last Month to Date"]'>
+                                <label class="custom-control-label" for="time_span_1">
+                                    This Month vs Last Month
+                                </label>
+                            </div>
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input time-span-checkbox" 
+                                       id="time_span_2" name="time_span_2"
+                                       value='["Year to Date", "Last Year to Date"]'>
+                                <label class="custom-control-label" for="time_span_2">
+                                    This Year vs Last Year
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveChart()">Save Chart</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+$(document).ready(function() {
+    // Handle table selection change
+    $('#table_name').change(function() {
+        const tableName = $(this).val();
+        if (tableName) {
+            // Enable and populate x-axis field select
+            $.getJSON(`/get_table_columns/${tableName}`, function(columns) {
+                const xAxisSelect = $('#x_axis_field');
+                xAxisSelect.empty().append('<option value="">Select a field</option>');
+                columns.forEach(function(column) {
+                    xAxisSelect.append(new Option(column, column));
+                });
+                xAxisSelect.prop('disabled', false);
+
+                // Enable and populate calculation fields
+                $('.calculation-field').each(function() {
+                    const calcField = $(this);
+                    calcField.empty().append('<option value="">Select a field</option>');
+                    columns.forEach(function(column) {
+                        calcField.append(new Option(column, column));
+                    });
+                    calcField.prop('disabled', false);
+                });
+
+                // Enable and populate condition fields
+                $('.condition-field').each(function() {
+                    const condField = $(this);
+                    condField.empty().append('<option value="">Select a field</option>');
+                    columns.forEach(function(column) {
+                        condField.append(new Option(column, column));
+                    });
+                    condField.prop('disabled', false);
+                });
+            });
+        } else {
+            // Disable and clear fields if no table is selected
+            $('#x_axis_field').prop('disabled', true).empty()
+                .append('<option value="">Select a table first</option>');
+            $('.calculation-field').prop('disabled', true).empty()
+                .append('<option value="">Select a table first</option>');
+            $('.condition-field').prop('disabled', true).empty()
+                .append('<option value="">Select a table first</option>');
+        }
+    });
+
+    // Handle x-axis field selection
+    $('#x_axis_field').change(function() {
+        const field = $(this).val();
+        if (field) {
+            const tableName = $('#table_name').val();
+            // Get column info to determine grouping options
+            $.getJSON(`/api/chart/get_column_info/${tableName}/${field}`, function(info) {
+                const groupingOptions = $('#grouping_options');
+                const dateGrouping = $('#date_grouping');
+                const numericGrouping = $('#numeric_grouping');
+
+                if (info.type === 'date') {
+                    dateGrouping.show();
+                    numericGrouping.hide();
+                    groupingOptions.addClass('active');
+                } else if (info.type === 'numeric') {
+                    dateGrouping.hide();
+                    numericGrouping.show();
+                    groupingOptions.addClass('active');
+                } else {
+                    groupingOptions.removeClass('active');
+                    dateGrouping.hide();
+                    numericGrouping.hide();
+                }
+            });
+        }
+    });
+
+    // Handle chart type selection
+    $('.chart-type-option').click(function() {
+        $('.chart-type-option').removeClass('selected');
+        $(this).addClass('selected');
+    });
+
+    // Handle adding measure steps
+    $('#add_measure_step').click(function() {
+        const measureSteps = $('#measure_steps');
+        const newStep = measureSteps.children().first().clone();
+        
+        // Show operator section for subsequent steps
+        newStep.find('.operator-section').show();
+        
+        // Reset values but keep the options
+        newStep.find('select').each(function() {
+            $(this).val('');
+            // If table is selected, enable calculation fields
+            if ($('#table_name').val()) {
+                $(this).prop('disabled', false);
+            }
+        });
+        
+        // Reset conditions
+        const conditionsContainer = newStep.find('.conditions-container');
+        conditionsContainer.empty();
+        addConditionRow(conditionsContainer);
+        
+        measureSteps.append(newStep);
+    });
+
+    // Handle adding conditions
+    $(document).on('click', '.add-condition', function() {
+        const conditionsContainer = $(this).siblings('.conditions-container');
+        addConditionRow(conditionsContainer);
+    });
+
+    // Handle removing conditions
+    $(document).on('click', '.remove-condition', function() {
+        const conditionRow = $(this).closest('.condition-row');
+        const conditionsContainer = conditionRow.parent();
+        if (conditionsContainer.children().length > 1) {
+            conditionRow.remove();
+        }
+    });
+
+    // First, define all helper functions at the global scope
+    function getColumnOptions() {
+        let options = '';
+        const tableSelect = $('#table_name');
+        if (tableSelect.val()) {
+            // Get the current table's columns from the x-axis field select
+            $('#x_axis_field option').each(function() {
+                if ($(this).val()) {
+                    options += `<option value="${$(this).val()}">${$(this).text()}</option>`;
+                }
+            });
+        }
+        return options;
+    }
+
+    // Then define all other functions that might use getColumnOptions
+    function addConditionRow(container) {
+        const conditionRow = `
+            <div class="condition-row">
+                <div class="row">
+                    <div class="col">
+                        <select class="form-control condition-field" ${$('#table_name').val() ? '' : 'disabled'}>
+                            <option value="">Select a field</option>
+                            ${getColumnOptions()}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select class="form-control condition-operator">
+                            <option value="=">=</option>
+                            <option value="!=">!=</option>
+                            <option value=">">&gt;</option>
+                            <option value=">=">&gt;=</option>
+                            <option value="<">&lt;</option>
+                            <option value="<=">&lt;=</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <input type="text" class="form-control condition-value" placeholder="Value">
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger remove-condition">&times;</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.append(conditionRow);
+    }
+
+    // Make the function globally available
+    window.getColumnOptions = getColumnOptions;
+    window.addConditionRow = addConditionRow;
+
+    // Handle removing measure steps
+    $(document).on('click', '.remove-step', function() {
+        const measureSteps = $('#measure_steps');
+        if (measureSteps.children().length > 1) {
+            $(this).closest('.measure-step').remove();
+        }
+    });
+
+    // Load chart previews
+    loadChartPreviews();
+
+    // Update saveChart function to include operators and conditions
+    window.saveChart = function() {
+        const formData = {
+            name: $('#chart_name').val(),
+            table_name: $('#table_name').val(),
+            x_axis: {
+                field: $('#x_axis_field').val(),
+                grouping_type: $('#date_grouping').is(':visible') ? 
+                              $('select[name="date_grouping"]').val() :
+                              $('#numeric_grouping').is(':visible') ?
+                              'span' : null,
+                grouping_value: $('#numeric_grouping').is(':visible') ?
+                              $('input[name="span_size"]').val() :
+                              $('select[name="date_grouping"]').val()
+            },
+            y_axis: [],
+            chart_type: $('.chart-type-option.selected').data('type'),
+            time_spans: [] // Add this for time spans
+        };
+
+        // Get selected time spans
+        $('.time-span-checkbox:checked').each(function() {
+            try {
+                const timeSpan = JSON.parse($(this).val());
+                formData.time_spans.push(timeSpan);
+            } catch (e) {
+                console.error('Error parsing time span:', e);
+            }
+        });
+
+        // Get measure steps with operators and conditions
+        $('#measure_steps .measure-step').each(function(index) {
+            const step = $(this);
+            const measureData = {
+                field: step.find('.calculation-field').val(),
+                method: step.find('.calculation-method').val(),
+                operator: index === 0 ? null : step.find('.step-operator').val(),
+                conditions: []
+            };
+
+            // Get conditions for this measure
+            step.find('.condition-row').each(function() {
+                const condition = {
+                    field: $(this).find('.condition-field').val(),
+                    operator: $(this).find('.condition-operator').val(),
+                    value: $(this).find('.condition-value').val()
+                };
+                if (condition.field && condition.value) {
+                    measureData.conditions.push(condition);
+                }
+            });
+
+            formData.y_axis.push(measureData);
+        });
+
+        // Add validation
+        if (!formData.name || !formData.table_name || !formData.x_axis.field || 
+            !formData.y_axis.length || !formData.chart_type) {
+            alert('Please fill in all required fields');
+            return;
+        }
+
+        // Send to server
+        $.ajax({
+            url: '/api/chart/save',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(response) {
+                // Close the modal using Bootstrap's API
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addChartModal'));
+                if (modal) {
+                    modal.hide();
+                }
+                
+                // Clear the form
+                $('#chartForm')[0].reset();
+                $('.chart-type-option').removeClass('selected');
+                
+                // Add a small delay before reloading to ensure modal is closed
+                setTimeout(() => {
+                    window.location.reload();
+                }, 300);
+            },
+            error: function(xhr, status, error) {
+                alert('Error saving chart: ' + (xhr.responseJSON?.error || error));
+            }
+        });
+    };
+});
+
+function deleteChart(chartId) {
+    if (confirm('Are you sure you want to delete this chart?')) {
+        $.ajax({
+            url: `/api/chart/delete/${chartId}`,
+            method: 'POST',
+            success: function() {
+                location.reload();
+            },
+            error: function(xhr, status, error) {
+                alert('Error deleting chart: ' + (xhr.responseJSON?.error || error));
+            }
+        });
+    }
+}
+
+// Add function to handle chart toggle
+function toggleChart(chartId) {
+    $.ajax({
+        url: `/api/chart/toggle/${chartId}`,
+        method: 'POST',
+        success: function(response) {
+            console.log('Chart toggled:', response);
+        },
+        error: function(xhr, status, error) {
+            alert('Error toggling chart: ' + (xhr.responseJSON?.error || error));
+            // Revert toggle switch
+            $(`[data-chart-id="${chartId}"] .chart-toggle`).prop('checked', 
+                !$(`[data-chart-id="${chartId}"] .chart-toggle`).prop('checked'));
+        }
+    });
+}
+
+// Then update the editChart function
+function editChart(chartId) {
+    console.log('Editing chart:', chartId);
+    $.get(`/api/chart/get/${chartId}`, function(data) {
+        console.log('Received chart data:', data);
+        
+        // Reset form
+        $('#chartForm')[0].reset();
+        $('.chart-type-option').removeClass('selected');
+        
+        // Set basic fields
+        $('#chart_id').val(data.id);
+        $('#chart_name').val(data.name);
+        
+        // Set table and trigger change event
+        $('#table_name').val(data.table_name).trigger('change');
+        
+        // Wait for table change to complete before setting other fields
+        setTimeout(() => {
+            // Parse x-axis configuration
+            const xAxis = JSON.parse(data.x_axis);
+            $('#x_axis_field').val(xAxis.field).trigger('change');
+            
+            // Wait for x-axis change to complete before setting grouping options
+            setTimeout(() => {
+                if (xAxis.grouping_type === 'span') {
+                    $('input[name="span_size"]').val(xAxis.grouping_value);
+                } else {
+                    $('select[name="date_grouping"]').val(xAxis.grouping_type);
+                }
+                
+                // Parse and set y-axis configuration
+                const yAxis = JSON.parse(data.y_axis);
+                $('#measure_steps').empty();
+                
+                yAxis.forEach((measure, index) => {
+                    if (index > 0) {
+                        $('#add_measure_step').click();
+                    }
+                    
+                    const measureStep = $('#measure_steps .measure-step').eq(index);
+                    
+                    // Set calculation field and method
+                    measureStep.find('.calculation-field').val(measure.field);
+                    measureStep.find('.calculation-method').val(measure.method);
+                    
+                    // Set operator if not first measure
+                    if (index > 0 && measure.operator) {
+                        measureStep.find('.operator-section').show();
+                        measureStep.find('.step-operator').val(measure.operator);
+                    }
+                    
+                    // Set conditions
+                    const conditionsContainer = measureStep.find('.conditions-container');
+                    conditionsContainer.empty();
+                    
+                    if (measure.conditions && measure.conditions.length > 0) {
+                        measure.conditions.forEach((condition, condIndex) => {
+                            const conditionHtml = `
+                                <div class="condition-row">
+                                    <div class="row">
+                                        <div class="col">
+                                            <select class="form-control condition-field">
+                                                <option value="">Select a field</option>
+                                                ${getColumnOptions()}
+                                            </select>
+                                        </div>
+                                        <div class="col">
+                                            <select class="form-control condition-operator">
+                                                <option value="=">=</option>
+                                                <option value="!=">!=</option>
+                                                <option value=">">&gt;</option>
+                                                <option value=">=">&gt;=</option>
+                                                <option value="<">&lt;</option>
+                                                <option value="<=">&lt;=</option>
+                                            </select>
+                                        </div>
+                                        <div class="col">
+                                            <input type="text" class="form-control condition-value" placeholder="Value">
+                                        </div>
+                                        <div class="col-auto">
+                                            <button type="button" class="btn btn-danger remove-condition">&times;</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            conditionsContainer.append(conditionHtml);
+                            
+                            // Set condition values after a short delay
+                            setTimeout(() => {
+                                const conditionRow = conditionsContainer.children().last();
+                                conditionRow.find('.condition-field').val(condition.field);
+                                conditionRow.find('.condition-operator').val(condition.operator);
+                                conditionRow.find('.condition-value').val(condition.value);
+                            }, 100);
+                        });
+                    } else {
+                        // Add empty condition row if no conditions exist
+                        measureStep.find('.add-condition').click();
+                    }
+                });
+                
+                // Set chart type
+                $(`.chart-type-option[data-type="${data.chart_type}"]`).addClass('selected');
+                
+                // Set time spans
+                if (data.time_spans) {
+                    const timeSpans = JSON.parse(data.time_spans);
+                    timeSpans.forEach(span => {
+                        const spanStr = JSON.stringify(span);
+                        $(`.time-span-checkbox[value='${spanStr}']`).prop('checked', true);
+                    });
+                }
+                
+                // Update modal title
+                $('#chartModalTitle').text('Edit Chart');
+                
+                // Show modal
+                const modal = new bootstrap.Modal($('#addChartModal'));
+                modal.show();
+            }, 500);
+        }, 500);
+    }).fail(function(error) {
+        console.error('Error loading chart data:', error);
+        alert('Error loading chart data. Please try again.');
+    });
+}
+
+// Add this function to load and display charts
+function loadChartPreviews() {
+    console.log('Loading chart previews...');
+    $.get('/api/charts/data', function(charts) {
+        console.log('Received charts data:', charts);
+        
+        if (charts && charts.length > 0) {
+            charts.forEach(chart => {
+                console.log('Processing chart preview:', chart);
+                const previewContainer = $(`#chart-preview-${chart.id}`);
+                if (previewContainer.length) {
+                    // Clear any existing chart
+                    previewContainer.empty();
+                    const canvas = $('<canvas>').attr('id', `chart-canvas-${chart.id}`);
+                    previewContainer.append(canvas);
+                    renderChartPreview(chart, `chart-canvas-${chart.id}`);
+                }
+            });
+        }
+    }).fail(function(error) {
+        console.error('Error loading chart previews:', error);
+    });
+}
+
+function renderChartPreview(chartData, canvasId) {
+    console.log('Rendering chart preview:', canvasId);
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    if (!ctx) {
+        console.error('Could not get canvas context for:', canvasId);
+        return;
+    }
+    
+    const config = {
+        type: chartData.chart_type,
+        data: {
+            labels: chartData.labels,
+            datasets: chartData.datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    };
+    
+    console.log('Chart configuration:', config);
+    try {
+        new Chart(ctx, config);
+        console.log('Chart preview rendered successfully');
+    } catch (error) {
+        console.error('Error rendering chart preview:', error);
+    }
+}
+
+// Make functions globally available
+window.deleteChart = deleteChart;
+window.toggleChart = toggleChart;
+window.editChart = editChart;
+window.loadChartPreviews = loadChartPreviews;
+</script>
+{% endblock %}
+

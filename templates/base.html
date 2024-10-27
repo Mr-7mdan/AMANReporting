@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATM Data Management</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <style>
+        body {
+            background-color: #f8f9fa;
+            /* Add padding to account for fixed navbar */
+            padding-top: 70px;
+        }
+        
+        .navbar {
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+            background-color: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .container {
+            padding-top: 2.5rem;
+            padding-bottom: 2.5rem;
+            max-width: 1400px;  /* Wider container for better spacing */
+        }
+        
+        .card {
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+            border: none;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+        .card-header {
+            background-color: #fff;
+            border-bottom: 1px solid rgba(0,0,0,.125);
+            padding: 1rem;
+        }
+        .card-body {
+            padding: 1.5rem;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        .table {
+            background-color: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+        .table th,
+        .table td {
+            padding: 1rem;
+            vertical-align: middle;
+        }
+        .btn {
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            margin: 0.25rem;
+            height: auto !important;
+            min-height: 38px;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            line-height: normal;
+        }
+        .btn-group {
+            display: inline-flex;
+            gap: 0.5rem;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            margin: -0.25rem;
+        }
+        .btn-group .btn {
+            margin: 0.25rem;
+            flex: 0 1 auto;
+        }
+        .table td .btn-group {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            min-height: 38px;
+        }
+        .table td .btn {
+            padding: 0.375rem 0.75rem;
+        }
+        .btn-sm {
+            padding: 0.25rem 0.75rem;
+            min-height: 31px;
+            font-size: 0.875rem;
+        }
+        form .btn-group {
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .btn i {
+            margin-right: 0.5rem;
+            font-size: 0.9em;
+            flex-shrink: 0;
+        }
+        @media (max-width: 768px) {
+            .btn-group {
+                flex-wrap: wrap;
+            }
+            
+            .table td .btn-group {
+                flex-direction: row;
+                width: auto;
+            }
+            
+            .table td .btn {
+                width: auto;
+            }
+        }
+        h2, h3 {
+            margin-bottom: 1.5rem;
+        }
+        .alert {
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            padding: 1rem 1.5rem;
+        }
+        .form-control {
+            border-radius: 6px;
+            padding: 0.625rem 1rem;
+            height: auto;
+        }
+        .navbar-brand {
+            font-weight: 600;
+            font-size: 1.2rem;
+        }
+        .nav-link {
+            font-weight: 500;
+            padding: 0.5rem 1rem !important;
+            transition: color 0.2s ease;
+        }
+        .nav-link:hover {
+            color: #0d6efd !important;
+        }
+        .last-updated {
+            font-size: 0.9rem;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+        /* Better spacing for select2 dropdowns */
+        .select2-container--default .select2-selection--single {
+            padding: 0.625rem 1rem;
+            height: auto;
+            line-height: 1.5;
+        }
+        /* Improved button styles */
+        .btn i {
+            margin-right: 0.5rem;  /* Space between icon and text */
+            font-size: 0.9em;      /* Slightly smaller icons */
+        }
+        /* Small buttons */
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        /* Table cell padding for buttons */
+        .table td .btn-group {
+            margin: -0.25rem;  /* Compensate for button margins */
+        }
+        /* Ensure buttons don't overflow on mobile */
+        @media (max-width: 768px) {
+            .btn-group {
+                flex-direction: column;
+                width: 100%;
+            }
+            
+            .btn-group .btn {
+                width: 100%;
+                margin: 0.25rem 0;
+            }
+        }
+        /* Navbar specific styles */
+        .navbar .btn {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.9rem;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 991.98px) {
+            .navbar-collapse {
+                padding: 1rem 0;
+            }
+            
+            .navbar .d-flex {
+                flex-direction: column;
+                align-items: stretch !important;
+                gap: 0.5rem;
+            }
+            
+            .last-updated {
+                text-align: center;
+            }
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Include the navbar -->
+    {% include 'navbar.html' %}
+
+    <!-- Main Content -->
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

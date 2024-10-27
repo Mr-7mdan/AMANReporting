@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title mb-0">Welcome to ATM Data Management</h2>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-cog fa-3x mb-3 text-primary"></i>
+                        <h3>Settings</h3>
+                        <p>Configure database connections and manage data sources</p>
+                        <a href="{{ url_for('settings') }}" class="btn btn-primary">
+                            Go to Settings
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-chart-bar fa-3x mb-3 text-success"></i>
+                        <h3>Statistics</h3>
+                        <p>View and analyze ATM performance metrics</p>
+                        <a href="{{ url_for('stats') }}" class="btn btn-success">
+                            View Stats
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-sync-alt fa-3x mb-3 text-info"></i>
+                        <h3>Data Refresh</h3>
+                        <p>Last Updated: {{ last_updated }}</p>
+                        <form action="{{ url_for('refresh_data_route') }}" method="POST">
+                            <button type="submit" class="btn btn-info">
+                                Refresh Data
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

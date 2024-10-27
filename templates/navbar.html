@@ -1,0 +1,35 @@
+<nav class="navbar navbar-expand-lg navbar-light bg-white fixed-top">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="{{ url_for('index') }}">
+            <i class="fas fa-chart-line me-2"></i>ATM Data Management
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('settings') }}">
+                        <i class="fas fa-cog me-1"></i>Settings
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('stats') }}">
+                        <i class="fas fa-chart-bar me-1"></i>Stats
+                    </a>
+                </li>
+            </ul>
+            <div class="d-flex align-items-center">
+                <form class="me-3" action="{{ url_for('refresh_data_route') }}" method="POST">
+                    <button class="btn btn-outline-primary" type="submit">
+                        <i class="fas fa-sync-alt me-1"></i>Refresh Data
+                    </button>
+                </form>
+                <span class="last-updated">
+                    <i class="far fa-clock me-1"></i>Last Updated: {{ last_updated }}
+                </span>
+            </div>
+        </div>
+    </div>
+</nav>

@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Settings</h2>
+
+<!-- Add Flask Settings Section -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title mb-0">Flask Server Settings</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('update_flask_settings') }}">
+            <div class="form-group">
+                <label for="flask_port">Server Port</label>
+                <input type="number" class="form-control" id="flask_port" name="flask_port" 
+                       value="{{ config.get('flask_port', '5000') }}" min="1024" max="65535" required>
+                <small class="form-text text-muted">Port number (1024-65535). Default is 5000.</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Flask Settings</button>
+        </form>
+    </div>
+</div>
+
+<!-- Database Settings Section -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title mb-0">Database Settings</h3>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info" role="alert">
+            Database configuration is managed through environment variables.
+        </div>
+        <form method="POST" action="{{ url_for('update_db_settings') }}">
+            <div class="form-group">
+                <label for="host">Host</label>
+                <input type="text" class="form-control" id="host" name="host" value="{{ config.get('host', '') }}" required>
+            </div>
+            <div class="form-group">
+                <label for="port">Database Port</label>
+                <input type="text" class="form-control" id="port" name="port" value="{{ config.get('port', '') }}" required>
+            </div>
+            <div class="form-group">
+                <label for="db_name">Database Name</label>
+                <input type="text" class="form-control" id="db_name" name="db_name" value="{{ config.get('db_name', '') }}" required>
+            </div>
+            <div class="form-group">
+                <label for="db_username">Database Username</label>
+                <input type="text" class="form-control" id="db_username" name="db_username" value="{{ config.get('db_username', '') }}" required>
+            </div>
+            <div class="form-group">
+                <label for="db_password">Database Password</label>
+                <input type="password" class="form-control" id="db_password" name="db_password" value="{{ config.get('db_password', '') }}" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Database Settings</button>
+        </form>
+    </div>
+</div>
+
+<h3 class="mt-5">Current Configuration</h3>
+<table class="table">
+    <tr>
+        <th>Host</th>
+        <td>{{ config.get('host', 'Not set') }}</td>
+    </tr>
+    <tr>
+        <th>Port</th>
+        <td>{{ config.get('port', 'Not set') }}</td>
+    </tr>
+    <tr>
+        <th>Database Name</th>
+        <td>{{ config.get('db_name', 'Not set') }}</td>
+    </tr>
+    <tr>
+        <th>Username</th>
+        <td>{{ config.get('db_username', 'Not set') }}</td>
+    </tr>
+    <tr>
+        <th>Password</th>
+        <td>********</td>
+    </tr>
+</table>
+<button id="test-connection" class="btn btn-primary">Test Connection</button>
+
+<h3 class="mt-5">Added Tables</h3>
+{% if added_tables %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Table Name</th>
+                <th>Update Column</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for table in added_tables %}
+            <tr>
+                <td>{{ table.name }}</td>
+                <td>{{ table.update_column }}</td>
+                <td>
+                    <form action="{{ url_for('delete_table', table_id=table.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this table?');">
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No tables have been added yet.</p>
+{% endif %}
+
+<h3 class="mt-5">Add New Table</h3>
+<div id="db-structure-loading" class="text-center">
+    <div class="spinner-border" role="status">
+        <span class="sr-only">Loading...</span>
+    </div>
+    <p>Loading database structure...</p>
+</div>
+<div id="db-structure-error" class="alert alert-danger" style="display: none;"></div>
+<form id="add-table-form" method="POST" action="{{ url_for('add_table') }}" style="display: none;">
+    <div class="form-group">
+        <label for="table_name">Table</label>
+        <select class="form-control" id="table_name" name="table_name" required></select>
+    </div>
+    <div class="form-group">
+        <label for="update_column">Update Column</label>
+        <select class="form-control" id="update_column" name="update_column" required></select>
+    </div>
+    <button type="submit" class="btn btn-primary">Add Table</button>
+</form>
+
+<h3 class="mt-5">Add Custom SQL Query</h3>
+<form id="add-custom-query-form" method="POST" action="{{ url_for('add_custom_query') }}">
+    <div class="form-group">
+        <label for="query_name">Query Name</label>
+        <input type="text" class="form-control" id="query_name" name="query_name" required>
+    </div>
+    <div class="form-group">
+        <label for="sql_query">SQL Query</label>
+        <textarea class="form-control" id="sql_query" name="sql_query" rows="10" required></textarea>
+    </div>
+    <div class="form-group">
+        <label for="update_column">Update Column</label>
+        <input type="text" class="form-control" id="update_column" name="update_column" required>
+        <small class="form-text text-muted">Specify the column name that will be used to track updates.</small>
+    </div>
+    <button type="submit" class="btn btn-primary">Add Custom Query</button>
+</form>
+
+<h3 class="mt-5">Custom Queries</h3>
+{% if custom_queries %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Query Name</th>
+                <th>Update Column</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for query in custom_queries %}
+            <tr>
+                <td>{{ query.name }}</td>
+                <td>{{ query.update_column }}</td>
+                <td>
+                    <form action="{{ url_for('delete_custom_query', query_id=query.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this custom query?');">
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No custom queries have been added yet.</p>
+{% endif %}
+
+{% endblock %}
+
+{% block head %}
+{{ super() }}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    /* Make the Select2 dropdowns wider */
+    .select2-container {
+        width: 100% !important;
+        min-width: 400px;
+    }
+
+    /* Style the dropdown options */
+    .select2-results__option {
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+
+    /* Style the selected option */
+    .select2-selection__rendered {
+        padding: 8px 12px !important;
+        line-height: 24px !important;
+    }
+
+    /* Adjust the height of the select box */
+    .select2-selection--single {
+        height: 38px !important;
+    }
+
+    /* Center the dropdown arrow vertically */
+    .select2-selection__arrow {
+        height: 36px !important;
+    }
+
+    /* Make the form groups wider */
+    .form-group {
+        max-width: 800px;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+    $(document).ready(function() {
+        var dbStructure = null;
+
+        function loadDatabaseStructure() {
+            $('#db-structure-loading').show();
+            $('#db-structure-error').hide();
+            $('#add-table-form').hide();
+
+            $.getJSON("{{ url_for('get_db_structure') }}", function(data) {
+                $('#db-structure-loading').hide();
+                if (data.error) {
+                    $('#db-structure-error').text(data.error).show();
+                    return;
+                }
+                
+                dbStructure = data;
+                initializeTableSelect();
+                $('#add-table-form').show();
+            }).fail(function() {
+                $('#db-structure-loading').hide();
+                $('#db-structure-error').text('Failed to fetch database structure. Please check your database configuration.').show();
+            });
+        }
+
+        function initializeTableSelect() {
+            var tableSelect = $('#table_name');
+            tableSelect.empty();
+            tableSelect.append($('<option>', {
+                value: '',
+                text: 'Select a table'
+            }));
+
+            dbStructure.forEach(function(table) {
+                tableSelect.append($('<option>', {
+                    value: table.id,
+                    text: table.text
+                }));
+            });
+
+            tableSelect.select2({
+                placeholder: 'Select a table',
+                allowClear: true
+            });
+
+            tableSelect.on('change', function() {
+                updateColumnSelect($(this).val());
+            });
+        }
+
+        function updateColumnSelect(tableName) {
+            var columnSelect = $('#update_column');
+            columnSelect.empty();
+            columnSelect.append($('<option>', {
+                value: '',
+                text: 'Select an update column'
+            }));
+
+            if (tableName) {
+                var table = dbStructure.find(t => t.id === tableName);
+                if (table && table.children) {
+                    table.children.forEach(function(column) {
+                        columnSelect.append($('<option>', {
+                            value: column.text,
+                            text: column.text
+                        }));
+                    });
+                }
+            }
+
+            columnSelect.select2({
+                placeholder: 'Select an update column',
+                allowClear: true
+            });
+        }
+
+        $('#test-connection').click(function(e) {
+            e.preventDefault();
+            $.get("{{ url_for('test_db_connection_route') }}", function(data) {
+                alert(data.message);
+                loadDatabaseStructure();  // Reload database structure after successful connection
+            }).fail(function(jqXHR) {
+                alert("Error: " + jqXHR.responseJSON.error);
+            });
+        });
+
+        // Initial load of database structure
+        loadDatabaseStructure();
+    });
+</script>
+{% endblock %}
