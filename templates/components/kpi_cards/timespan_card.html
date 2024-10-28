@@ -1,0 +1,26 @@
+<!-- Multi-timespan KPI Card Template -->
+<div class="kpi-card timespan-kpi" data-kpi-id="{{ kpi.id }}">
+    <div class="kpi-card-header">
+        <h3>{{ kpi.name }}</h3>
+    </div>
+    <div class="timespan-grid">
+        {% for span in kpi.timespan_data %}
+        <div class="timespan-item">
+            <div class="timespan-header">
+                <span class="time-badge">{{ span.current_period|abbreviate_timespan }}</span>
+            </div>
+            <div class="timespan-content">
+                <div class="current-value">{{ span.current_value }}</div>
+                <div class="comparison">
+                    <div class="change {{ 'positive-change' if span.change >= 0 else 'negative-change' }}">
+                        {{ '↑' if span.change >= 0 else '↓' }} {{ span.change|abs }}%
+                    </div>
+                    <div class="vs-period">
+                        vs <span class="time-badge small">{{ span.comparison_period|abbreviate_timespan }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>

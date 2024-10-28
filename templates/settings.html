@@ -482,11 +482,16 @@
                 
                 if (data.status === 'pending' || data.status === 'syncing') {
                     spinner.show();
-                    statusText.text(data.status === 'pending' ? 'Waiting to sync...' : 'Syncing...');
+                    // Show progress if available
+                    if (data.rows_fetched && data.progress !== undefined) {
+                        statusText.text(`Syncing... (${Math.round(data.progress)}%)`);
+                        rowsFetched.html(`${data.rows_fetched.toLocaleString()} rows fetched`);
+                    } else {
+                        statusText.text('Syncing...');
+                    }
                     setTimeout(() => updateTableStatus(tableId), 2000);
                 } else if (data.status === 'completed') {
                     statusText.html('<i class="fas fa-check text-success"></i> Synced');
-                    // Replace content instead of appending
                     rowsFetched.html(`${data.rows_fetched.toLocaleString()} rows • Last sync: ${data.last_sync}`);
                 } else if (data.status === 'error') {
                     statusText.html(`<i class="fas fa-exclamation-triangle text-danger"></i> Error: ${data.error_message}`);
@@ -515,11 +520,24 @@
                 
                 if (data.status === 'pending' || data.status === 'syncing') {
                     spinner.show();
-                    statusText.text(data.status === 'pending' ? 'Waiting to sync...' : 'Syncing...');
-                    setTimeout(() => updateQueryStatus(queryId), 2000);
+                    // Show progress if available
+                    if (data.rows_fetched !== undefined && data.progress !== undefined) {
+                        const progressPercent = Math.round(data.progress);
+                        statusText.text(`Syncing... (${progressPercent}%)`);
+                        rowsFetched.html(`${data.rows_fetched.toLocaleString()} rows fetched`);
+                        
+                        // Log progress for debugging
+                        console.log(`Progress update for query ${queryId}:`, {
+                            rows_fetched: data.rows_fetched,
+                            progress: data.progress,
+                            status: data.status
+                        });
+                    } else {
+                        statusText.text('Syncing...');
+                    }
+                    setTimeout(() => updateQueryStatus(queryId), 1000);  // Poll more frequently
                 } else if (data.status === 'completed') {
                     statusText.html('<i class="fas fa-check text-success"></i> Synced');
-                    // Replace content instead of appending
                     rowsFetched.html(`${data.rows_fetched.toLocaleString()} rows • ${data.execution_time.toFixed(2)}s • Last sync: ${data.last_sync}`);
                 } else if (data.status === 'error') {
                     statusText.html(`<i class="fas fa-exclamation-triangle text-danger"></i> Error: ${data.error_message}`);
@@ -530,6 +548,7 @@
                 spinner.hide();
                 statusText.html('<i class="fas fa-exclamation-triangle text-danger"></i> Status check failed');
                 fetchBtn.show();
+                console.error('Error checking query status:', error);
             });
     }
 

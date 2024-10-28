@@ -1,0 +1,13 @@
+<!-- Basic KPI Card Template -->
+<div class="kpi-card basic-kpi" data-kpi-id="{{ kpi.id }}">
+    <div class="kpi-card-header">
+        <h3>{{ kpi.name }}</h3>
+    </div>
+    <div class="current-value">{{ kpi.current_value }}</div>
+    <div class="comparison">
+        <div class="change {{ 'positive-change' if kpi.change >= 0 else 'negative-change' }}">
+            {{ '↑' if kpi.change >= 0 else '↓' }} {{ kpi.change|abs }}%
+        </div>
+        <div class="vs-period">vs {{ kpi.comparison_period }}</div>
+    </div>
+</div>

@@ -7,8 +7,12 @@ from urllib.parse import quote_plus
 import logging
 import pyodbc
 import pymssql
+from sqlalchemy import inspect
 
 logger = logging.getLogger(__name__)
+# Set logging level to warning
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+
 
 class DatabaseManager:
     def __init__(self):
@@ -73,23 +77,26 @@ class DatabaseManager:
 
         # Data tables (AMANReporting.db) will be created dynamically
 
-        # Add this to your existing tables
+        # Update TableSyncStatus table to include progress column
         self.TableSyncStatus = Table('TableSyncStatus', self.metadata,
             Column('table_id', Integer, primary_key=True),
             Column('status', String, nullable=False),  # pending, syncing, completed, error
             Column('rows_fetched', Integer, default=0),
             Column('error_message', String),
-            Column('last_sync', DateTime)
+            Column('last_sync', DateTime),
+            Column('progress', Float)  # Add progress column for tracking percentage
         )
 
-        # Add CustomQuerySyncStatus table
+        # Update CustomQuerySyncStatus table to include progress
         self.CustomQuerySyncStatus = Table('CustomQuerySyncStatus', self.metadata,
             Column('query_id', Integer, primary_key=True),
             Column('status', String, nullable=False),  # pending, syncing, completed, error
             Column('rows_fetched', Integer, default=0),
             Column('error_message', String),
             Column('last_sync', DateTime),
-            Column('execution_time', Float)  # Store query execution time in seconds
+            Column('execution_time', Float),  # Store query execution time in seconds
+            Column('progress', Float),  # Add progress column for tracking percentage
+            Column('total_rows', Integer)  # Add this column
         )
 
         # Add RefreshHistory table
@@ -143,11 +150,29 @@ class DatabaseManager:
         self.local_session = scoped_session(self.local_session_factory)
 
     def create_tables(self):
-        """Create tables in their respective databases"""
-        # Create config tables in app_config.db
-        self.metadata.create_all(self.app_config_engine)
-        
-        # Data tables in AMANReporting.db are created dynamically when data is fetched
+        """Create tables only if they don't exist"""
+        try:
+            logger.info("Checking and creating missing tables")
+            
+            # Get list of existing tables
+            with self.app_config_engine.connect() as conn:
+                inspector = inspect(self.app_config_engine)
+                existing_tables = inspector.get_table_names()
+                logger.info(f"Found existing tables: {existing_tables}")
+                
+                # Create only missing tables
+                for table_name, table in self.metadata.tables.items():
+                    if table_name not in existing_tables:
+                        logger.info(f"Creating missing table: {table_name}")
+                        table.create(self.app_config_engine)
+                    else:
+                        logger.info(f"Table already exists: {table_name}")
+                
+            logger.info("Table check/creation completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error creating tables: {str(e)}")
+            raise
 
     def get_remote_engine(self):
         """Create and return a remote database engine"""
@@ -251,39 +276,68 @@ class DatabaseManager:
 
     def recreate_tables(self):
         """
-        Recreate all tables with proper transaction handling
+        Only recreate tables that need schema updates
         """
         try:
-            # Get existing data first
-            with self.app_config_engine.connect() as conn:
-                # Commit any pending transaction
-                conn.execute(text("COMMIT"))
+            logger.info("Checking for table schema updates")
+            
+            with self.app_config_engine.begin() as conn:
+                inspector = inspect(self.app_config_engine)
+                existing_tables = inspector.get_table_names()
                 
-                # Start new transaction
-                with conn.begin():
-                    # Get existing data
-                    existing_data = {}
-                    for table in self.metadata.tables.values():
-                        try:
-                            result = conn.execute(text(f"SELECT * FROM {table.name}"))
-                            existing_data[table.name] = result.fetchall()
-                        except:
-                            existing_data[table.name] = []
-
-                    # Drop and recreate tables
-                    self.metadata.drop_all(self.app_config_engine)
-                    self.metadata.create_all(self.app_config_engine)
-
-                    # Restore data
-                    for table_name, data in existing_data.items():
-                        if data:
-                            columns = self.metadata.tables[table_name].columns.keys()
-                            insert_stmt = f"INSERT INTO {table_name} ({','.join(columns)}) VALUES ({','.join(['?' for _ in columns])})"
-                            conn.execute(text(insert_stmt), data)
-
-            logger.info("Tables recreated successfully")
+                for table_name, table in self.metadata.tables.items():
+                    if table_name in existing_tables:
+                        # Compare existing columns with metadata columns
+                        existing_columns = {col['name']: col for col in inspector.get_columns(table_name)}
+                        metadata_columns = {col.name: col for col in table.columns}
+                        
+                        # Check if we need to update this table
+                        needs_update = False
+                        missing_columns = []
+                        
+                        for col_name, col in metadata_columns.items():
+                            if col_name not in existing_columns:
+                                needs_update = True
+                                missing_columns.append(col_name)
+                        
+                        if needs_update:
+                            logger.info(f"Table {table_name} needs schema update. Missing columns: {missing_columns}")
+                            
+                            # Get existing data
+                            result = conn.execute(text(f"SELECT * FROM {table_name}"))
+                            existing_data = result.fetchall()
+                            
+                            # Drop and recreate table
+                            conn.execute(text(f"DROP TABLE {table_name}"))
+                            table.create(self.app_config_engine)
+                            
+                            # Restore data for existing columns
+                            if existing_data:
+                                existing_column_names = list(existing_columns.keys())
+                                placeholders = ','.join(['?' for _ in existing_column_names])
+                                insert_stmt = f"INSERT INTO {table_name} ({','.join(existing_column_names)}) VALUES ({placeholders})"
+                                
+                                insert_data = []
+                                for row in existing_data:
+                                    row_data = []
+                                    for col in existing_column_names:
+                                        row_data.append(getattr(row, col))
+                                    insert_data.append(row_data)
+                                
+                                if insert_data:
+                                    conn.execute(text(insert_stmt), insert_data)
+                                    logger.info(f"Restored {len(insert_data)} rows to {table_name}")
+                        else:
+                            logger.info(f"Table {table_name} schema is up to date")
+                            
+            logger.info("Schema update check completed successfully")
             return True
+            
         except Exception as e:
-            logger.error(f"Error recreating tables: {str(e)}")
+            logger.error(f"Error checking/updating table schemas: {str(e)}")
             return False
+
+
+
+
 

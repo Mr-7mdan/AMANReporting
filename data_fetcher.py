@@ -11,7 +11,16 @@ class ATMDataFetcher:
         self.local_engine = local_engine
         self.logger = logging.getLogger('ATMForecast')
 
-    def fetch_and_store_data(self, table_name, update_column, last_record_id):
+    def fetch_and_store_data(self, table_name, update_column, last_record_id, progress_callback=None):
+        """
+        Fetch and store data from source to local database
+        
+        Args:
+            table_name (str): Name of the table to fetch
+            update_column (str): Column to track updates
+            last_record_id: Last record ID in local database
+            progress_callback (callable): Optional callback function to report progress
+        """
         try:
             query = self.build_query(table_name, update_column, last_record_id)
             self.logger.info(f"Query for table {table_name}: {query}")
@@ -20,17 +29,43 @@ class ATMDataFetcher:
             start_time = time.time()
             
             with self.source_engine.connect() as connection:
-                df = pd.read_sql(query, connection)
-            
-            elapsed_time = time.time() - start_time
-            self.logger.info(f"Fetched {len(df)} rows for table {table_name} in {elapsed_time:.2f} seconds")
-            
-            if df.empty:
-                self.logger.info(f"No new data fetched for table {table_name}")
-            else:
-                self.logger.info(f"Data fetched for table {table_name}: {len(df)} rows")
-            
-            return df
+                # First get total count for progress tracking
+                count_query = f"SELECT COUNT(*) FROM ({query}) as subquery"
+                total_count = connection.execute(text(count_query)).scalar()
+                
+                # Fetch data in chunks for better memory management and progress tracking
+                chunk_size = 1000
+                chunks = []
+                rows_fetched = 0
+                
+                result = connection.execution_options(stream_results=True).execute(text(query))
+                while True:
+                    chunk = result.fetchmany(chunk_size)
+                    if not chunk:
+                        break
+                    
+                    chunks.append(chunk)
+                    rows_fetched += len(chunk)
+                    
+                    # Report progress if callback provided
+                    if progress_callback:
+                        progress_callback(rows_fetched)
+                
+                # Convert to DataFrame
+                if chunks:
+                    df = pd.DataFrame([dict(row._mapping) for chunk in chunks for row in chunk])
+                    
+                    # Store in local database
+                    with self.local_engine.begin() as local_conn:
+                        df.to_sql(table_name, local_conn, if_exists='replace', index=False)
+                    
+                    elapsed_time = time.time() - start_time
+                    self.logger.info(f"Fetched {len(df)} rows for table {table_name} in {elapsed_time:.2f} seconds")
+                    return df
+                else:
+                    self.logger.info(f"No new data fetched for table {table_name}")
+                    return pd.DataFrame()
+                
         except Exception as e:
             self.logger.error(f"Error in fetch_and_store_data for table {table_name}: {str(e)}")
             raise

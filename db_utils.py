@@ -69,13 +69,11 @@ def get_last_record_id(engine, table_name, update_column):
         return None
 
 def refresh_data(source_engine, local_engine, app_config_engine):
-    from data_fetcher import ATMDataFetcher
-    logger.info("Initializing ATMDataFetcher")
-    fetcher = ATMDataFetcher(source_engine, local_engine)
-
     try:
         logger.info("Starting data fetch and store process")
+
         
+        # Get tables from ConfigTables
         with app_config_engine.connect() as connection:
             result = connection.execute(text("SELECT name, update_column FROM ConfigTables"))
             added_tables = result.fetchall()
@@ -83,6 +81,7 @@ def refresh_data(source_engine, local_engine, app_config_engine):
         logger.info(f"Found {len(added_tables)} tables to update")
         
         for table_name, update_column in added_tables:
+            # Process each table...
             logger.info(f"Processing table: {table_name} with update column: {update_column}")
             try:
                 # Get the last record ID from the local database
@@ -135,7 +134,8 @@ def refresh_data(source_engine, local_engine, app_config_engine):
         raise
     finally:
         logger.info("Closing database connection")
-        fetcher.close()
+        if 'fetcher' in locals():  # Only close if fetcher was created
+            fetcher.close()
 
 def test_connection(engine):
     try:

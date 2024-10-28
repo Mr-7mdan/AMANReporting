@@ -1,0 +1,55 @@
+<!-- Dimensional KPI Card Template -->
+<div class="kpi-card dimensional-kpi" data-kpi-id="{{ kpi.id }}">
+    <div class="kpi-card-header">
+        <div class="kpi-title">
+            <h3>{{ kpi.name }}</h3>
+            <div class="dimension-tags">
+                {% for dim in kpi.dimensions %}
+                <span class="dimension-tag">
+                    <i class="fas fa-cube"></i> {{ dim }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="dimension-data">
+        <table class="dimension-table">
+            <thead>
+                <tr>
+                    {% for dim in kpi.dimensions %}
+                    <th>{{ dim }}</th>
+                    {% endfor %}
+                    {% for span in kpi.dimensional_data[kpi.dimensional_data.keys()|list|first].time_spans %}
+                    <th class="value-column" colspan="2">
+                        <span class="time-badge">{{ span.current_period|abbreviate_timespan }}</span>
+                    </th>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    {% for _ in kpi.dimensions %}
+                    <th></th>
+                    {% endfor %}
+                    {% for _ in kpi.dimensional_data[kpi.dimensional_data.keys()|list|first].time_spans %}
+                    <th class="value-column">Value</th>
+                    <th class="change-column">Change</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for dim_key, data in kpi.dimensional_data.items() %}
+                <tr>
+                    {% for value in data.dimension_values.values() %}
+                    <td>{{ value }}</td>
+                    {% endfor %}
+                    {% for span in data.time_spans %}
+                    <td class="value-column">{{ span.current_value }}</td>
+                    <td class="change-column {{ 'positive-change' if span.change >= 0 else 'negative-change' }}">
+                        {{ '↑' if span.change >= 0 else '↓' }} {{ span.change|abs }}%
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

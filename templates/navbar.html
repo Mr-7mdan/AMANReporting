@@ -262,11 +262,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 `${item.rows_fetched.toLocaleString()} rows • ${item.execution_time}s` : 
                                 item.status === 'error' ? 
                                 item.error_message : 
+                                item.rows_fetched ? 
+                                `Fetched ${item.rows_fetched.toLocaleString()} rows${item.progress ? ` (${Math.round(item.progress)}%)` : ''}` :
                                 'Processing...'}
                         </div>
-                        ${item.status === 'syncing' ? `
+                        ${item.status === 'syncing' && item.progress ? `
                             <div class="progress">
-                                <div class="progress-bar" style="width: ${item.progress || 0}%"></div>
+                                <div class="progress-bar" style="width: ${item.progress}%"></div>
                             </div>
                         ` : ''}
                     </div>

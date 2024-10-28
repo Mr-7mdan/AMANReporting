@@ -1,0 +1,16 @@
+<!-- Chart Card Template -->
+<div class="chart-container" data-chart-id="{{ chart.id }}">
+    <div class="chart-header">
+        <h3>{{ chart.name }}</h3>
+        <div class="chart-badges">
+            {% for span in chart.time_spans %}
+            <span class="time-badge">
+                {{ span[0]|abbreviate_timespan }} vs {{ span[1]|abbreviate_timespan }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="chart-wrapper">
+        <canvas id="chart-canvas-{{ chart.id }}"></canvas>
+    </div>
+</div>
