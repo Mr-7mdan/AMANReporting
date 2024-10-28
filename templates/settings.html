@@ -33,23 +33,28 @@
         <form method="POST" action="{{ url_for('update_db_settings') }}">
             <div class="form-group">
                 <label for="host">Host</label>
-                <input type="text" class="form-control" id="host" name="host" value="{{ config.get('host', '') }}" required>
+                <input type="text" class="form-control" id="host" name="host" 
+                       value="{{ config.get('host', '') }}" required>
             </div>
             <div class="form-group">
                 <label for="port">Database Port</label>
-                <input type="text" class="form-control" id="port" name="port" value="{{ config.get('port', '') }}" required>
+                <input type="text" class="form-control" id="port" name="port" 
+                       value="{{ config.get('port', '') }}" required>
             </div>
             <div class="form-group">
                 <label for="db_name">Database Name</label>
-                <input type="text" class="form-control" id="db_name" name="db_name" value="{{ config.get('db_name', '') }}" required>
+                <input type="text" class="form-control" id="db_name" name="db_name" 
+                       value="{{ config.get('db_name', '') }}" required>
             </div>
             <div class="form-group">
                 <label for="db_username">Database Username</label>
-                <input type="text" class="form-control" id="db_username" name="db_username" value="{{ config.get('db_username', '') }}" required>
+                <input type="text" class="form-control" id="db_username" name="db_username" 
+                       value="{{ config.get('db_username', '') }}" required>
             </div>
             <div class="form-group">
                 <label for="db_password">Database Password</label>
-                <input type="password" class="form-control" id="db_password" name="db_password" value="{{ config.get('db_password', '') }}" required>
+                <input type="password" class="form-control" id="db_password" name="db_password" 
+                       value="{{ config.get('db_password', '') }}" required>
             </div>
             <button type="submit" class="btn btn-primary">Save Database Settings</button>
         </form>
@@ -123,14 +128,15 @@
         <select class="form-control" id="table_name" name="table_name" required></select>
     </div>
     <div class="form-group">
-        <label for="update_column">Update Column</label>
-        <select class="form-control" id="update_column" name="update_column" required></select>
+        <label for="table_update_column">Update Column</label>
+        <select class="form-control" id="table_update_column" name="update_column" required></select>
     </div>
     <button type="submit" class="btn btn-primary">Add Table</button>
 </form>
 
 <h3 class="mt-5">Add Custom SQL Query</h3>
 <form id="add-custom-query-form" method="POST" action="{{ url_for('add_custom_query') }}">
+    <input type="hidden" id="query_id" name="query_id">
     <div class="form-group">
         <label for="query_name">Query Name</label>
         <input type="text" class="form-control" id="query_name" name="query_name" required>
@@ -140,11 +146,12 @@
         <textarea class="form-control" id="sql_query" name="sql_query" rows="10" required></textarea>
     </div>
     <div class="form-group">
-        <label for="update_column">Update Column</label>
-        <input type="text" class="form-control" id="update_column" name="update_column" required>
+        <label for="query_update_column">Update Column</label>
+        <input type="text" class="form-control" id="query_update_column" name="update_column" required>
         <small class="form-text text-muted">Specify the column name that will be used to track updates.</small>
     </div>
-    <button type="submit" class="btn btn-primary">Add Custom Query</button>
+    <button type="submit" class="btn btn-primary" id="query-submit-btn">Add Custom Query</button>
+    <button type="button" class="btn btn-secondary" id="cancel-edit-btn" style="display: none;">Cancel</button>
 </form>
 
 <h3 class="mt-5">Custom Queries</h3>
@@ -163,9 +170,18 @@
                 <td>{{ query.name }}</td>
                 <td>{{ query.update_column }}</td>
                 <td>
-                    <form action="{{ url_for('delete_custom_query', query_id=query.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this custom query?');">
-                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                    </form>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="editQuery({{ query.id }})">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <form action="{{ url_for('delete_custom_query', query_id=query.id) }}" method="POST" 
+                              class="d-inline"
+                              onsubmit="return confirm('Are you sure you want to delete this custom query?');">
+                            <button type="submit" class="btn btn-danger btn-sm">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
@@ -270,7 +286,7 @@
         }
 
         function updateColumnSelect(tableName) {
-            var columnSelect = $('#update_column');
+            var columnSelect = $('#table_update_column');  // Updated ID here
             columnSelect.empty();
             columnSelect.append($('<option>', {
                 value: '',
@@ -307,6 +323,89 @@
 
         // Initial load of database structure
         loadDatabaseStructure();
+    });
+
+    function editQuery(queryId) {
+        // Fetch query details
+        $.get(`/get_custom_query/${queryId}`)
+            .done(function(data) {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                console.log('Retrieved query data:', data);
+                
+                // Populate form fields with correct IDs
+                $('#query_id').val(data.id);
+                $('#query_name').val(data.name);
+                $('#sql_query').val(data.sql_query);
+                $('#query_update_column').val(data.update_column);  // Updated ID here
+                
+                // Update button text and show cancel button
+                $('#query-submit-btn').text('Update Custom Query');
+                $('#cancel-edit-btn').show();
+                
+                // Scroll to form
+                $('#add-custom-query-form')[0].scrollIntoView({ behavior: 'smooth' });
+            })
+            .fail(function(jqXHR, textStatus, errorThrown) {
+                console.error('Error:', jqXHR.responseJSON?.error || errorThrown);
+                alert('Error loading query details: ' + (jqXHR.responseJSON?.error || 'Please try again.'));
+            });
+    }
+
+    // Add cancel button handler
+    $('#cancel-edit-btn').click(function() {
+        // Reset form
+        $('#add-custom-query-form')[0].reset();
+        $('#query_id').val('');
+        $('#query-submit-btn').text('Add Custom Query');
+        $(this).hide();
+    });
+
+    // Add form submit handler to update button text and handle submission
+    $('#add-custom-query-form').submit(function(e) {
+        e.preventDefault();
+        const queryId = $('#query_id').val();
+        const submitBtn = $('#query-submit-btn');
+        const cancelBtn = $('#cancel-edit-btn');
+        
+        // Update button text
+        submitBtn.text(queryId ? 'Updating...' : 'Adding...');
+        submitBtn.prop('disabled', true);
+        cancelBtn.prop('disabled', true);
+        
+        // Submit form using AJAX
+        $.ajax({
+            url: $(this).attr('action'),
+            method: 'POST',
+            data: $(this).serialize(),
+            success: function(response) {
+                // Show success message
+                alert(queryId ? 'Query updated successfully!' : 'Query added successfully!');
+                
+                // Reset form
+                $('#add-custom-query-form')[0].reset();
+                $('#query_id').val('');
+                submitBtn.text('Add Custom Query');
+                cancelBtn.hide();
+                
+                // Reload the page to show updated data
+                window.location.reload();
+            },
+            error: function(xhr) {
+                // Show error message
+                alert('Error: ' + (xhr.responseJSON?.error || 'Failed to save query. Please try again.'));
+                
+                // Reset button text but don't clear form
+                submitBtn.text(queryId ? 'Update Custom Query' : 'Add Custom Query');
+            },
+            complete: function() {
+                // Re-enable buttons
+                submitBtn.prop('disabled', false);
+                cancelBtn.prop('disabled', false);
+            }
+        });
     });
 </script>
 {% endblock %}

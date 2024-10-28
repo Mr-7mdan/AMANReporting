@@ -17,14 +17,20 @@ def setup_database_connections(config):
 
     logger.info(f"Connecting to database: {db_name} on host: {db_host}:{db_port}")
 
-    # Use pymssql for SQL Server
-    source_db_url = f"mssql+pymssql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    # Use pyodbc for SQL Server
+    source_db_url = f"mssql+pyodbc://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?driver=ODBC+Driver+17+for+SQL+Server"
     
     logger.debug(f"Database URL: {source_db_url.replace(db_password, '********')}")
 
     logger.info("Creating database engine with extended timeout")
     try:
-        source_engine = create_engine(source_db_url, pool_timeout=30, pool_pre_ping=True)
+        source_engine = create_engine(
+            source_db_url, 
+            pool_timeout=30, 
+            pool_pre_ping=True,
+            pool_recycle=3600,
+            fast_executemany=True
+        )
         # Test the connection
         with source_engine.connect() as connection:
             result = connection.execute(text("SELECT 1"))

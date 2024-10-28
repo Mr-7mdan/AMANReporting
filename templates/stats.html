@@ -1361,86 +1361,115 @@ function loadKPIs() {
     });
 }
 
+// Add this function before appendKPICard
+function abbreviateTimespan(value) {
+    const abbreviations = {
+        'Today': 'Today',
+        'Yesterday': 'Yday',
+        'Month to Date': 'MTD',
+        'Last Month to Date': 'LMTD',
+        'Year to Date': 'YTD',
+        'Last Year to Date': 'LYTD'
+    };
+    return abbreviations[value] || value;
+}
+
+// Update the appendKPICard function
 function appendKPICard(container, kpi, index) {
     console.log('Appending KPI card:', kpi);
-    const changeClass = kpi.change >= 0 ? 'positive-change' : 'negative-change';
-    const changeIcon = kpi.change >= 0 ? '↑' : '↓';
-    const changeText = Math.abs(kpi.change) + '%';
     
-    // Extract the base KPI name and time span from the full name
-    const nameMatch = kpi.name.match(/(.*?)\s*\((.*?)\)$/);
-    const baseName = nameMatch ? nameMatch[1] : kpi.name;
-    const timeSpan = nameMatch ? nameMatch[2] : '';
-    const timeSpanAbbr = getTimeSpanAbbreviation(timeSpan);
-    
-    // Get conditions from the KPI data
-    let conditions = [];
-    try {
-        // Get conditions from the KPI configuration
-        const baseKpiId = baseName.toLowerCase();
-        $.ajax({
-            url: '/get_kpi_config_by_name/' + encodeURIComponent(baseKpiId),
-            method: 'GET',
-            async: false,
-            success: function(data) {
-                console.log('Got KPI config for', baseKpiId, ':', data);
-                if (data.conditions) {
-                    conditions = typeof data.conditions === 'string' ? 
-                                JSON.parse(data.conditions) : data.conditions;
-                }
-            }
-        });
-    } catch (e) {
-        console.error('Error getting conditions:', e);
-        conditions = [];
-    }
-    
-    // Create badges for each condition
-    const conditionBadges = Array.isArray(conditions) ? conditions.map(condition => {
-        return `
-            <div class="condition-badge" data-operator="${condition.operator}">
-                <i class="fas fa-filter"></i>
-                ${condition.field} ${getOperatorSymbol(condition.operator)} ${condition.value}
+    if (kpi.type === 'dimensional') {
+        // Create dimensional KPI card with a modern table design
+        const dimensionalCard = `
+            <div class="kpi-card dimensional-kpi" data-kpi-id="${index}">
+                <div class="kpi-card-header">
+                    <div class="kpi-title">
+                        <h3>${kpi.name}</h3>
+                        <div class="dimension-tags">
+                            ${kpi.dimensions.map(dim => `
+                                <span class="dimension-tag">
+                                    <i class="fas fa-cube"></i> ${dim}
+                                </span>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+                <div class="dimension-data">
+                    <table class="dimension-table">
+                        <thead>
+                            <tr class="header-row">
+                                ${kpi.dimensions.map(dim => `
+                                    <th class="dimension-header">${dim}</th>
+                                `).join('')}
+                                ${Object.values(kpi.dimensional_data)[0].time_spans.map(span => `
+                                    <th class="value-header" colspan="2">
+                                        <span class="time-badge">${abbreviateTimespan(span.current_period)}</span>
+                                    </th>
+                                `).join('')}
+                            </tr>
+                            <tr class="subheader-row">
+                                ${kpi.dimensions.map(() => '<th></th>').join('')}
+                                ${Object.values(kpi.dimensional_data)[0].time_spans.map(() => `
+                                    <th class="value-column">Value</th>
+                                    <th class="change-column">Change</th>
+                                `).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${Object.entries(kpi.dimensional_data).map(([dimKey, data], rowIndex) => `
+                                <tr class="${rowIndex % 2 === 0 ? 'even-row' : 'odd-row'}">
+                                    ${Object.values(data.dimension_values).map(value => `
+                                        <td class="dimension-value">${value}</td>
+                                    `).join('')}
+                                    ${data.time_spans.map(span => {
+                                        const changeClass = span.change >= 0 ? 'positive-change' : 'negative-change';
+                                        const changeIcon = span.change >= 0 ? '↑' : '↓';
+                                        return `
+                                            <td class="value-column">${span.current_value}</td>
+                                            <td class="change-column ${changeClass}">
+                                                ${changeIcon} ${Math.abs(span.change)}%
+                                            </td>
+                                        `;
+                                    }).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         `;
-    }).join('') : '';
-    
-    const kpiHtml = `
-        <div class="kpi-card" data-kpi-id="${index}">
-            <div class="card-controls">
-                <button class="card-control-btn move-up" title="Move Up">
-                    <i class="fas fa-chevron-up"></i>
-                </button>
-                <button class="card-control-btn move-down" title="Move Down">
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-                <button class="card-control-btn move-left" title="Move Left">
-                    <i class="fas fa-chevron-left"></i>
-                </button>
-                <button class="card-control-btn move-right" title="Move Right">
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
-            <div class="kpi-card-header">
-                <span class="kpi-name">${baseName}</span>
-                <span class="time-span-badge">${timeSpanAbbr}</span>
-            </div>
-            <div class="kpi-value">${kpi.current_value}</div>
-            <div class="kpi-comparison">
-                <span class="${changeClass}">
-                    ${changeIcon} ${changeText}
-                </span>
-                vs ${getTimeSpanAbbreviation(kpi.comparison_period)}
-            </div>
-            ${conditions.length > 0 ? `
-                <div class="condition-badges">
-                    ${conditionBadges}
+        container.append(dimensionalCard);
+    } else {
+        // Create multi-timespan KPI card with a modern grid design
+        const multiTimespanCard = `
+            <div class="kpi-card timespan-kpi" data-kpi-id="${index}">
+                <div class="kpi-card-header">
+                    <h3>${kpi.name}</h3>
                 </div>
-            ` : ''}
-        </div>
-    `;
-    
-    container.append(kpiHtml);
+                <div class="timespan-grid">
+                    ${kpi.timespan_data.map(span => `
+                        <div class="timespan-item">
+                            <div class="timespan-header">
+                                <span class="time-badge">${abbreviateTimespan(span.current_period)}</span>
+                            </div>
+                            <div class="timespan-content">
+                                <div class="current-value">${span.current_value}</div>
+                                <div class="comparison">
+                                    <div class="change ${span.change >= 0 ? 'positive-change' : 'negative-change'}">
+                                        ${span.change >= 0 ? '↑' : '↓'} ${Math.abs(span.change)}%
+                                    </div>
+                                    <div class="vs-period">
+                                        vs <span class="time-badge small">${abbreviateTimespan(span.comparison_period)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        container.append(multiTimespanCard);
+    }
 }
 
 // Add these functions to handle layout saving

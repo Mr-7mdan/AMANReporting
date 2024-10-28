@@ -97,6 +97,16 @@
             </div>
             
             <div class="form-group">
+                <label>Dimensions (Optional)</label>
+                <select class="form-control dimension-field" name="dimensions[]" multiple disabled>
+                    <option value="">Select a table first</option>
+                </select>
+                <small class="form-text text-muted">
+                    Hold Ctrl/Cmd to select multiple dimensions. KPI values will be calculated for each unique combination of selected dimensions.
+                </small>
+            </div>
+            
+            <div class="form-group">
                 <label>Conditions</label>
                 <div id="conditions-container">
                     <div class="condition-row mb-2">
@@ -193,6 +203,57 @@
 {{ super() }}
 <script>
 $(document).ready(function() {
+    // Define helper functions first
+    function addConditionRow() {
+        const conditionsContainer = $('#conditions-container');
+        const conditionTemplate = `
+            <div class="condition-row mb-2">
+                <div class="row">
+                    <div class="col">
+                        <select class="form-control condition-field" name="conditions[]">
+                            <option value="">Select a field</option>
+                            ${getColumnOptions()}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select class="form-control condition-operator" name="conditions[]">
+                            <option value="=">=</option>
+                            <option value="!=">!=</option>
+                            <option value=">">&gt;</option>
+                            <option value=">=">&gt;=</option>
+                            <option value="<">&lt;</option>
+                            <option value="<=">&lt;=</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <input type="text" class="form-control condition-value" name="conditions[]" placeholder="Value">
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger remove-condition">&times;</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        conditionsContainer.append(conditionTemplate);
+    }
+
+    // Make the function globally available
+    window.addConditionRow = addConditionRow;
+
+    // Add condition button handler
+    $('#add-condition').click(function() {
+        addConditionRow();
+    });
+
+    // Remove condition button handler
+    $(document).on('click', '.remove-condition', function() {
+        const conditionRow = $(this).closest('.condition-row');
+        const conditionsContainer = $('#conditions-container');
+        if (conditionsContainer.children().length > 1) {
+            conditionRow.remove();
+        }
+    });
+
     // Handle table selection
     $('#table_name').change(function() {
         console.log('Table selection changed');
@@ -201,7 +262,8 @@ $(document).ready(function() {
             console.log('Loading columns for table:', tableName);
             $.getJSON(`/get_table_columns/${tableName}`, function(columns) {
                 console.log('Received columns:', columns);
-                // Update all calculation field selects in all steps
+                
+                // Update calculation fields
                 $('.calculation-field').each(function() {
                     const fieldSelect = $(this);
                     fieldSelect.empty().append('<option value="">Select a field</option>');
@@ -229,24 +291,34 @@ $(document).ready(function() {
                     conditionField.prop('disabled', false);
                 });
                 
+                // Update dimension fields
+                const dimensionSelect = $('.dimension-field');
+                dimensionSelect.empty().append('<option value="">Select dimension fields</option>');
+                columns.forEach(function(column) {
+                    dimensionSelect.append(new Option(column, column));
+                });
+                dimensionSelect.prop('disabled', false);
+                
+                // Initialize Select2 for dimensions
+                dimensionSelect.select2({
+                    placeholder: 'Select dimension fields',
+                    allowClear: true,
+                    multiple: true
+                });
+                
                 // If we're editing, set the saved values
                 if (window.editingKPI) {
                     console.log('Setting saved values for editing KPI');
                     dateSelect.val(window.editingKPI.date_column);
                     
-                    // Set calculation fields for each step
-                    if (window.editingKPI.calculation_steps) {
-                        const steps = JSON.parse(window.editingKPI.calculation_steps);
-                        $('.calculation-step').each(function(index) {
-                            if (index < steps.length && steps[index].type === 'field') {
-                                $(this).find('.calculation-field').val(steps[index].field);
-                                $(this).find('.calculation-method').val(steps[index].method);
-                            }
-                        });
+                    // Set dimensions if they exist
+                    if (window.editingKPI.dimensions) {
+                        const dimensions = JSON.parse(window.editingKPI.dimensions);
+                        dimensionSelect.val(dimensions).trigger('change');
                     }
+                    
+                    // Set other fields...
                 }
-            }).fail(function(error) {
-                console.error('Error loading columns:', error);
             });
         }
     });
@@ -292,65 +364,106 @@ $(document).ready(function() {
         }
     });
 
-    // Modify form submission to handle calculation steps
+    // Update the form submission code in the scripts section
     $('#kpi-form').on('submit', function(e) {
-        const calculationSteps = [];
-        $('.calculation-step').each(function(index) {
-            const step = $(this);
-            const stepType = step.find('.step-type').val();
-            const stepData = {
-                type: stepType,
-                operator: index === 0 ? null : step.find('.step-operator').val()
-            };
-            
-            if (stepType === 'field') {
-                stepData.field = step.find('.calculation-field').val();
-                stepData.method = step.find('.calculation-method').val();
-            } else {
-                stepData.value = step.find('.constant-input input').val();
-            }
-            
-            calculationSteps.push(stepData);
-        });
-        
-        // Add hidden input for calculation steps
-        $('<input>').attr({
-            type: 'hidden',
-            name: 'calculation_steps',
-            value: JSON.stringify(calculationSteps)
-        }).appendTo(this);
-    });
-});
-
-// Add form submission handler
-$('#kpi-form').on('submit', function(e) {
-    console.log('Form submitted');
-    
-    // Get selected time spans
-    var selectedTimeSpans = [];
-    $('.time-span-checkbox:checked').each(function() {
-        console.log('Checked checkbox value:', $(this).val());
-        try {
-            var spanPair = JSON.parse($(this).val());
-            selectedTimeSpans.push(spanPair);
-            console.log('Added span pair:', spanPair);
-        } catch (e) {
-            console.error('Error parsing time span:', e);
-        }
-    });
-
-    console.log('Selected time spans:', selectedTimeSpans);
-
-    // Validate at least one time span is selected
-    if (selectedTimeSpans.length === 0) {
         e.preventDefault();
-        alert('Please select at least one time span');
-        return false;
-    }
+        
+        // Get form data
+        const formData = {
+            name: $('#kpi_name').val(),
+            table_name: $('#table_name').val(),
+            date_column: $('#date_column').val(),
+            id: $('#kpi_id').val() || null,  // Include ID if editing
+            
+            // Get calculation steps
+            calculation_steps: $('.calculation-step').map(function(index) {
+                const step = $(this);
+                const stepType = step.find('.step-type').val();
+                const stepData = {
+                    type: stepType,
+                    operator: index === 0 ? null : step.find('.step-operator').val()
+                };
+                
+                if (stepType === 'field') {
+                    stepData.field = step.find('.calculation-field').val();
+                    stepData.method = step.find('.calculation-method').val();
+                } else {
+                    stepData.value = step.find('.constant-input input').val();
+                }
+                
+                return stepData;
+            }).get(),
+            
+            // Get dimensions
+            dimensions: $('.dimension-field').val() || [],
+            
+            // Get time spans - Fixed this part
+            time_spans: $('.time-span-checkbox:checked').map(function() {
+                try {
+                    // Parse the JSON value and return it directly
+                    return JSON.parse($(this).val());
+                } catch (e) {
+                    console.error('Error parsing time span value:', e);
+                    return null;
+                }
+            }).get().filter(Boolean),  // Filter out any null values
+            
+            // Get conditions
+            conditions: $('.condition-row').map(function() {
+                const row = $(this);
+                const field = row.find('.condition-field').val();
+                const operator = row.find('.condition-operator').val();
+                const value = row.find('.condition-value').val();
+                
+                // Only include if all fields are filled
+                if (field && operator && value) {
+                    return {
+                        field: field,
+                        operator: operator,
+                        value: value
+                    };
+                }
+            }).get()
+        };
 
-    return true;
+        // Validate time spans
+        if (!formData.time_spans || formData.time_spans.length === 0) {
+            alert('Please select at least one time span');
+            return;
+        }
+
+        // Show loading state
+        const submitBtn = $('#save-btn');
+        const originalText = submitBtn.text();
+        submitBtn.text('Saving...').prop('disabled', true);
+
+        // Log the data being sent
+        console.log('Sending KPI data:', formData);
+
+        // Submit using AJAX
+        $.ajax({
+            url: '/save_kpi',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(response) {
+                if (response.success) {
+                    alert('KPI saved successfully!');
+                    window.location.reload();
+                } else {
+                    alert('Error saving KPI: ' + (response.error || 'Unknown error'));
+                    submitBtn.text(originalText).prop('disabled', false);
+                }
+            },
+            error: function(xhr) {
+                alert('Error saving KPI: ' + (xhr.responseJSON?.error || 'Please try again.'));
+                submitBtn.text(originalText).prop('disabled', false);
+            }
+        });
+    });
 });
 
+// Update the editKPI function to not automatically add a condition
 function editKPI(button) {
     try {
         console.log('Starting editKPI function');
@@ -364,98 +477,204 @@ function editKPI(button) {
         document.getElementById('save-btn').textContent = 'Update KPI';
         document.getElementById('cancel-btn').style.display = 'inline-block';
         
-        // Populate form fields
-        document.getElementById('kpi_id').value = kpiData.id;
-        document.getElementById('kpi_name').value = kpiData.name;
-        document.getElementById('calculation_method').value = kpiData.calculation_method;
+        // Populate form fields - Use jQuery for setting values
+        $('#kpi_id').val(kpiData.id);
+        $('#kpi_name').val(kpiData.name);
         
         // Set table and trigger change event
-        const tableSelect = document.getElementById('table_name');
-        console.log('Setting table name:', kpiData.table_name);
-        tableSelect.value = kpiData.table_name;
+        const tableSelect = $('#table_name');
+        tableSelect.val(kpiData.table_name).trigger('change');
         
-        // Function to set field values after columns are loaded
-        function setFieldValues() {
-            console.log('Setting field values');
-            try {
-                // Set calculation field
-                const calculationField = document.getElementById('calculation_field');
-                calculationField.value = kpiData.calculation_field;
-                console.log('Set calculation field:', kpiData.calculation_field);
-                
+        // Wait for table change to complete and columns to load
+        setTimeout(() => {
+            // Get table columns
+            $.getJSON(`/get_table_columns/${kpiData.table_name}`, function(columns) {
                 // Set date column
-                const dateColumn = document.getElementById('date_column');
-                dateColumn.value = kpiData.date_column;
-                console.log('Set date column:', kpiData.date_column);
+                $('#date_column').val(kpiData.date_column);
                 
-                // Enable the fields
-                calculationField.disabled = false;
-                dateColumn.disabled = false;
+                // Parse and set calculation steps
+                const calculationSteps = JSON.parse(kpiData.calculation_steps);
+                console.log('Calculation steps:', calculationSteps);
                 
-                // Set time spans
-                try {
-                    const timeSpans = JSON.parse(kpiData.time_spans);
-                    console.log('Setting time spans:', timeSpans);
-                    document.querySelectorAll('.time-span-checkbox').forEach(checkbox => {
-                        try {
-                            const checkboxValue = JSON.parse(checkbox.value);
-                            const isChecked = timeSpans.some(span => 
-                                JSON.stringify(span) === JSON.stringify(checkboxValue)
-                            );
-                            checkbox.checked = isChecked;
-                            console.log('Checkbox value:', checkboxValue, 'Checked:', isChecked);
-                        } catch (e) {
-                            console.error('Error parsing checkbox value:', e);
+                // Clear existing calculation steps
+                $('#calculation-steps-container').empty();
+                
+                // Add and populate calculation steps
+                calculationSteps.forEach((step, index) => {
+                    if (index === 0) {
+                        // First step template
+                        const stepTemplate = `
+                            <div class="calculation-step mb-3">
+                                <div class="row align-items-center">
+                                    <div class="col-md-3">
+                                        <select class="form-control step-type" required>
+                                            <option value="field">Database Field</option>
+                                            <option value="constant">Constant Value</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 field-input">
+                                        <select class="form-control calculation-field">
+                                            <option value="">Select a field</option>
+                                            ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 constant-input" style="display: none;">
+                                        <input type="number" class="form-control" placeholder="Enter value">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <select class="form-control calculation-method" required>
+                                            <option value="Count">Count</option>
+                                            <option value="Sum">Sum</option>
+                                            <option value="Average">Average</option>
+                                            <option value="Maximum">Maximum</option>
+                                            <option value="Minimum">Minimum</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-auto">
+                                        <button type="button" class="btn btn-danger remove-step">&times;</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        $('#calculation-steps-container').append(stepTemplate);
+                    } else {
+                        // Add subsequent steps with operator
+                        const stepTemplate = `
+                            <div class="calculation-step mb-3">
+                                <div class="row align-items-center">
+                                    <div class="col-md-3">
+                                        <select class="form-control step-type" required>
+                                            <option value="field">Database Field</option>
+                                            <option value="constant">Constant Value</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 field-input">
+                                        <select class="form-control calculation-field">
+                                            <option value="">Select a field</option>
+                                            ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 constant-input" style="display: none;">
+                                        <input type="number" class="form-control" placeholder="Enter value">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <select class="form-control calculation-method" required>
+                                            <option value="Count">Count</option>
+                                            <option value="Sum">Sum</option>
+                                            <option value="Average">Average</option>
+                                            <option value="Maximum">Maximum</option>
+                                            <option value="Minimum">Minimum</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-auto">
+                                        <button type="button" class="btn btn-danger remove-step">&times;</button>
+                                    </div>
+                                    <div class="col-12 mt-2">
+                                        <select class="form-control step-operator">
+                                            <option value="+">Add (+)</option>
+                                            <option value="-">Subtract (-)</option>
+                                            <option value="*">Multiply (×)</option>
+                                            <option value="/">Divide (÷)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        $('#calculation-steps-container').append(stepTemplate);
+                    }
+                    
+                    // Get the current step element
+                    const stepElement = $('.calculation-step').eq(index);
+                    
+                    // Set step type and show/hide appropriate inputs
+                    stepElement.find('.step-type').val(step.type);
+                    if (step.type === 'field') {
+                        stepElement.find('.field-input').show();
+                        stepElement.find('.constant-input').hide();
+                        stepElement.find('.calculation-field').val(step.field);
+                        stepElement.find('.calculation-method').val(step.method);
+                    } else {
+                        stepElement.find('.field-input').hide();
+                        stepElement.find('.constant-input').show();
+                        stepElement.find('.constant-input input').val(step.value);
+                    }
+                    
+                    // Set operator for subsequent steps
+                    if (index > 0 && step.operator) {
+                        stepElement.find('.step-operator').val(step.operator);
+                    }
+                });
+                
+                // Parse and set conditions
+                const conditions = JSON.parse(kpiData.conditions);
+                const conditionsContainer = $('#conditions-container');
+                conditionsContainer.empty();  // Clear existing conditions
+                
+                if (conditions && conditions.length > 0) {
+                    conditions.forEach(condition => {
+                        // Add new condition row with columns
+                        const conditionTemplate = `
+                            <div class="condition-row mb-2">
+                                <div class="row">
+                                    <div class="col">
+                                        <select class="form-control condition-field" name="conditions[]">
+                                            <option value="">Select a field</option>
+                                            ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="col">
+                                        <select class="form-control condition-operator" name="conditions[]">
+                                            <option value="=">=</option>
+                                            <option value="!=">!=</option>
+                                            <option value=">">&gt;</option>
+                                            <option value=">=">&gt;=</option>
+                                            <option value="<">&lt;</option>
+                                            <option value="<=">&lt;=</option>
+                                        </select>
+                                    </div>
+                                    <div class="col">
+                                        <input type="text" class="form-control condition-value" name="conditions[]" placeholder="Value">
+                                    </div>
+                                    <div class="col-auto">
+                                        <button type="button" class="btn btn-danger remove-condition">&times;</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        conditionsContainer.append(conditionTemplate);
+                        
+                        // Get the last added condition row and set values
+                        const lastCondition = conditionsContainer.children().last();
+                        lastCondition.find('.condition-field').val(condition.field);
+                        lastCondition.find('.condition-operator').val(condition.operator);
+                        lastCondition.find('.condition-value').val(condition.value);
+                    });
+                }
+                // Removed the automatic addition of empty condition row
+                
+                // Parse and set time spans
+                const timeSpans = JSON.parse(kpiData.time_spans);
+                $('.time-span-checkbox').prop('checked', false); // Uncheck all first
+                
+                timeSpans.forEach(span => {
+                    $('.time-span-checkbox').each(function() {
+                        const checkboxSpan = JSON.parse($(this).val());
+                        if (JSON.stringify(checkboxSpan) === JSON.stringify(span)) {
+                            $(this).prop('checked', true);
                         }
                     });
-                } catch (e) {
-                    console.error('Error setting time spans:', e);
-                }
+                });
                 
-                // Set conditions
-                try {
-                    const conditions = JSON.parse(kpiData.conditions);
-                    console.log('Setting conditions:', conditions);
-                    const container = document.getElementById('conditions-container');
-                    container.innerHTML = ''; // Clear existing conditions
-                    
-                    if (conditions.length > 0) {
-                        conditions.forEach(condition => {
-                            const row = addConditionRow();
-                            const fieldSelect = row.querySelector('.condition-field');
-                            const operatorSelect = row.querySelector('.condition-operator');
-                            const valueInput = row.querySelector('.condition-value');
-                            
-                            fieldSelect.disabled = false;
-                            fieldSelect.value = condition.field;
-                            operatorSelect.value = condition.operator;
-                            valueInput.value = condition.value;
-                            console.log('Added condition:', condition);
-                        });
-                    } else {
-                        addConditionRow();
-                    }
-                } catch (e) {
-                    console.error('Error setting conditions:', e);
-                    addConditionRow();
+                // Set dimensions if they exist
+                if (kpiData.dimensions) {
+                    const dimensions = JSON.parse(kpiData.dimensions);
+                    $('.dimension-field').val(dimensions).trigger('change');
                 }
-            } catch (e) {
-                console.error('Error in setFieldValues:', e);
-            }
-        }
-        
-        // Trigger table change and set values after columns are loaded
-        console.log('Triggering table change event');
-        $(tableSelect).trigger('change');
-        
-        // Wait for columns to load before setting values
-        setTimeout(() => {
-            console.log('Setting field values after delay');
-            setFieldValues();
-        }, 1000);  // Increased timeout to 1 second
+            });
+        }, 500);
         
         // Scroll to form
-        document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+        $('.card')[0].scrollIntoView({ behavior: 'smooth' });
         
     } catch (e) {
         console.error('Error in editKPI:', e);
@@ -463,11 +682,22 @@ function editKPI(button) {
     }
 }
 
-function addConditionRow() {
-    const container = document.getElementById('conditions-container');
-    const template = document.querySelector('.condition-row').cloneNode(true);
-    container.appendChild(template);
-    return template;
+// Helper function to get column options
+function getColumnOptions() {
+    let options = '';
+    const tableSelect = document.getElementById('table_name');
+    if (tableSelect.value) {
+        // Get all options from the calculation field select
+        const calcField = document.querySelector('.calculation-field');
+        if (calcField) {
+            Array.from(calcField.options).forEach(option => {
+                if (option.value) {
+                    options += `<option value="${option.value}">${option.text}</option>`;
+                }
+            });
+        }
+    }
+    return options;
 }
 
 document.getElementById('cancel-btn').addEventListener('click', function() {
@@ -489,5 +719,69 @@ document.getElementById('cancel-btn').addEventListener('click', function() {
 document.getElementById('add-condition').addEventListener('click', function() {
     addConditionRow();
 });
+
+// Initialize Select2 for dimensions
+$('.dimension-field').select2({
+    placeholder: 'Select dimension fields',
+    allowClear: true,
+    multiple: true,
+    width: '100%'
+});
+
+// Update the table selection handler
+$('#table_name').change(function() {
+    var tableName = $(this).val();
+    if (tableName) {
+        $.getJSON(`/get_table_columns/${tableName}`, function(columns) {
+            // Update dimension fields
+            const dimensionSelect = $('.dimension-field');
+            dimensionSelect.empty();
+            columns.forEach(function(column) {
+                dimensionSelect.append(new Option(column, column));
+            });
+            dimensionSelect.prop('disabled', false);
+            
+            // If editing, set saved dimensions
+            if (window.editingKPI && window.editingKPI.dimensions) {
+                const dimensions = JSON.parse(window.editingKPI.dimensions);
+                dimensionSelect.val(dimensions).trigger('change');
+            }
+        });
+    } else {
+        // Reset and disable dimension field if no table selected
+        $('.dimension-field').empty()
+            .append('<option value="">Select a table first</option>')
+            .prop('disabled', true)
+            .trigger('change');
+    }
+});
 </script>
+
+<!-- Add this to your CSS -->
+<style>
+.select2-container--default .select2-selection--multiple {
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    min-height: 38px;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background-color: #007bff;
+    border: 1px solid #0056b3;
+    color: white;
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin: 3px;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+    color: white;
+    margin-right: 5px;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {
+    color: #ffc107;
+}
+</style>
 {% endblock %}
+

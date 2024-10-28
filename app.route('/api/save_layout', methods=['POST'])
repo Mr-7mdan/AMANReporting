@@ -1,0 +1,19 @@
+from flask import request, jsonify
+import json
+from app import db_manager, logger
+
+def save_layout():
+    try:
+        layout_data = request.json
+        with db_manager.app_config_engine.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT OR REPLACE INTO UserLayouts (id, layout_data, updated_at)
+                    VALUES ('default', :layout_data, CURRENT_TIMESTAMP)
+                """),
+                {'layout_data': json.dumps(layout_data)}
+            )
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error saving layout: {str(e)}")
+        return jsonify({'error': str(e)}), 500

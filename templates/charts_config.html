@@ -211,7 +211,9 @@ input:checked + .toggle-slider:before {
                         <h3 class="mb-0">{{ chart.name }}</h3>
                         <div class="chart-badges">
                             {% if chart.time_spans %}
-                                {% for span in chart.time_spans %}
+                                {% set spans = chart.time_spans if chart.time_spans is string else chart.time_spans|tojson %}
+                                {% set time_spans = spans|from_json if spans is string else spans %}
+                                {% for span in time_spans %}
                                     <span class="time-span-badge">
                                         {{ span[0]|abbreviate_timespan }} vs {{ span[1]|abbreviate_timespan }}
                                     </span>
@@ -219,7 +221,9 @@ input:checked + .toggle-slider:before {
                             {% endif %}
                             
                             {% if chart.y_axis %}
-                                {% for measure in chart.y_axis %}
+                                {% set y_axis = chart.y_axis if chart.y_axis is string else chart.y_axis|tojson %}
+                                {% set measures = y_axis|from_json if y_axis is string else y_axis %}
+                                {% for measure in measures %}
                                     {% if measure.conditions %}
                                         {% for condition in measure.conditions %}
                                             <div class="condition-badge" data-operator="{{ condition.operator }}">
@@ -466,6 +470,57 @@ input:checked + .toggle-slider:before {
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 $(document).ready(function() {
+    // Define helper functions first
+    function addConditionRow(container) {
+        const conditionRow = `
+            <div class="condition-row">
+                <div class="row">
+                    <div class="col">
+                        <select class="form-control condition-field" ${$('#table_name').val() ? '' : 'disabled'}>
+                            <option value="">Select a field</option>
+                            ${getColumnOptions()}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select class="form-control condition-operator">
+                            <option value="=">=</option>
+                            <option value="!=">!=</option>
+                            <option value=">">&gt;</option>
+                            <option value=">=">&gt;=</option>
+                            <option value="<">&lt;</option>
+                            <option value="<=">&lt;=</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <input type="text" class="form-control condition-value" placeholder="Value">
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger remove-condition">&times;</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.append(conditionRow);
+    }
+
+    function getColumnOptions() {
+        let options = '';
+        const tableSelect = $('#table_name');
+        if (tableSelect.val()) {
+            // Get the current table's columns from the x-axis field select
+            $('#x_axis_field option').each(function() {
+                if ($(this).val()) {
+                    options += `<option value="${$(this).val()}">${$(this).text()}</option>`;
+                }
+            });
+        }
+        return options;
+    }
+
+    // Make functions globally available
+    window.addConditionRow = addConditionRow;
+    window.getColumnOptions = getColumnOptions;
+
     // Handle table selection change
     $('#table_name').change(function() {
         const tableName = $(this).val();
@@ -544,13 +599,126 @@ $(document).ready(function() {
         $(this).addClass('selected');
     });
 
-    // Handle adding measure steps
+    // Add measure button click handler
     $('#add_measure_step').click(function() {
         const measureSteps = $('#measure_steps');
-        const newStep = measureSteps.children().first().clone();
+        const measureTemplate = `
+            <div class="measure-step">
+                <!-- Add a header with remove measure button -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">Measure</h5>
+                    <button type="button" class="btn btn-danger btn-sm remove-measure">
+                        <i class="fas fa-times"></i> Remove Measure
+                    </button>
+                </div>
+                <div class="calculation-steps">
+                    <div class="calculation-step">
+                        <div class="row align-items-center">
+                            <div class="col-md-5">
+                                <select class="form-control calculation-field" ${$('#table_name').val() ? '' : 'disabled'}>
+                                    <option value="">Select a field</option>
+                                    ${getColumnOptions()}
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-control calculation-method">
+                                    <option value="Count">Count</option>
+                                    <option value="Sum">Sum</option>
+                                    <option value="Average">Average</option>
+                                    <option value="Minimum">Minimum</option>
+                                    <option value="Maximum">Maximum</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-danger btn-sm remove-calculation-step" ${$('#measure_steps .calculation-step').length <= 1 ? 'style="display:none;"' : ''}>
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="col-12 operator-section mt-2">
+                                <select class="form-control step-operator">
+                                    <option value="+">Add (+)</option>
+                                    <option value="-">Subtract (-)</option>
+                                    <option value="*">Multiply (×)</option>
+                                    <option value="/">Divide (÷)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm mt-2 add-calculation-step">
+                    <i class="fas fa-plus"></i> Add Calculation Step
+                </button>
+
+                <div class="measure-conditions mt-3">
+                    <label>Measure Conditions</label>
+                    <div class="conditions-container">
+                        <div class="condition-row">
+                            <div class="row">
+                                <div class="col">
+                                    <select class="form-control condition-field" ${$('#table_name').val() ? '' : 'disabled'}>
+                                        <option value="">Select a field</option>
+                                        ${getColumnOptions()}
+                                    </select>
+                                </div>
+                                <div class="col">
+                                    <select class="form-control condition-operator">
+                                        <option value="=">=</option>
+                                        <option value="!=">!=</option>
+                                        <option value=">">&gt;</option>
+                                        <option value=">=">&gt;=</option>
+                                        <option value="<">&lt;</option>
+                                        <option value="<=">&lt;=</option>
+                                    </select>
+                                </div>
+                                <div class="col">
+                                    <input type="text" class="form-control condition-value" placeholder="Value">
+                                </div>
+                                <div class="col-auto">
+                                    <button type="button" class="btn btn-danger remove-condition">&times;</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm mt-2 add-condition">
+                        <i class="fas fa-plus"></i> Add Condition
+                    </button>
+                </div>
+            </div>
+        `;
         
-        // Show operator section for subsequent steps
+        measureSteps.append(measureTemplate);
+    });
+
+    // Add these new event handlers
+    // Remove entire measure
+    $(document).on('click', '.remove-measure', function() {
+        const measureSteps = $('#measure_steps');
+        if (measureSteps.children().length > 1) {
+            $(this).closest('.measure-step').remove();
+        } else {
+            alert('Cannot remove the last measure');
+        }
+    });
+
+    // Remove calculation step
+    $(document).on('click', '.remove-calculation-step', function() {
+        const calculationSteps = $(this).closest('.calculation-steps');
+        if (calculationSteps.children('.calculation-step').length > 1) {
+            $(this).closest('.calculation-step').remove();
+        } else {
+            alert('Cannot remove the last calculation step');
+        }
+    });
+
+    // Update the add calculation step handler
+    $(document).on('click', '.add-calculation-step', function() {
+        const calculationSteps = $(this).siblings('.calculation-steps');
+        const newStep = calculationSteps.children().first().clone(true);
+        
+        // Show operator section and remove button for subsequent steps
         newStep.find('.operator-section').show();
+        newStep.find('.remove-calculation-step').show();
         
         // Reset values but keep the options
         newStep.find('select').each(function() {
@@ -561,21 +729,16 @@ $(document).ready(function() {
             }
         });
         
-        // Reset conditions
-        const conditionsContainer = newStep.find('.conditions-container');
-        conditionsContainer.empty();
-        addConditionRow(conditionsContainer);
-        
-        measureSteps.append(newStep);
+        calculationSteps.append(newStep);
     });
 
-    // Handle adding conditions
+    // Add condition button click handler
     $(document).on('click', '.add-condition', function() {
         const conditionsContainer = $(this).siblings('.conditions-container');
         addConditionRow(conditionsContainer);
     });
 
-    // Handle removing conditions
+    // Remove condition button click handler
     $(document).on('click', '.remove-condition', function() {
         const conditionRow = $(this).closest('.condition-row');
         const conditionsContainer = conditionRow.parent();
@@ -584,59 +747,7 @@ $(document).ready(function() {
         }
     });
 
-    // First, define all helper functions at the global scope
-    function getColumnOptions() {
-        let options = '';
-        const tableSelect = $('#table_name');
-        if (tableSelect.val()) {
-            // Get the current table's columns from the x-axis field select
-            $('#x_axis_field option').each(function() {
-                if ($(this).val()) {
-                    options += `<option value="${$(this).val()}">${$(this).text()}</option>`;
-                }
-            });
-        }
-        return options;
-    }
-
-    // Then define all other functions that might use getColumnOptions
-    function addConditionRow(container) {
-        const conditionRow = `
-            <div class="condition-row">
-                <div class="row">
-                    <div class="col">
-                        <select class="form-control condition-field" ${$('#table_name').val() ? '' : 'disabled'}>
-                            <option value="">Select a field</option>
-                            ${getColumnOptions()}
-                        </select>
-                    </div>
-                    <div class="col">
-                        <select class="form-control condition-operator">
-                            <option value="=">=</option>
-                            <option value="!=">!=</option>
-                            <option value=">">&gt;</option>
-                            <option value=">=">&gt;=</option>
-                            <option value="<">&lt;</option>
-                            <option value="<=">&lt;=</option>
-                        </select>
-                    </div>
-                    <div class="col">
-                        <input type="text" class="form-control condition-value" placeholder="Value">
-                    </div>
-                    <div class="col-auto">
-                        <button type="button" class="btn btn-danger remove-condition">&times;</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        container.append(conditionRow);
-    }
-
-    // Make the function globally available
-    window.getColumnOptions = getColumnOptions;
-    window.addConditionRow = addConditionRow;
-
-    // Handle removing measure steps
+    // Remove measure step button click handler
     $(document).on('click', '.remove-step', function() {
         const measureSteps = $('#measure_steps');
         if (measureSteps.children().length > 1) {
@@ -773,129 +884,125 @@ function toggleChart(chartId) {
 // Then update the editChart function
 function editChart(chartId) {
     console.log('Editing chart:', chartId);
-    $.get(`/api/chart/get/${chartId}`, function(data) {
-        console.log('Received chart data:', data);
-        
-        // Reset form
-        $('#chartForm')[0].reset();
-        $('.chart-type-option').removeClass('selected');
-        
-        // Set basic fields
-        $('#chart_id').val(data.id);
-        $('#chart_name').val(data.name);
-        
-        // Set table and trigger change event
-        $('#table_name').val(data.table_name).trigger('change');
-        
-        // Wait for table change to complete before setting other fields
-        setTimeout(() => {
-            // Parse x-axis configuration
-            const xAxis = JSON.parse(data.x_axis);
-            $('#x_axis_field').val(xAxis.field).trigger('change');
+    $.get(`/api/chart/get/${chartId}`)
+        .done(function(data) {
+            console.log('Received chart data:', data);
             
-            // Wait for x-axis change to complete before setting grouping options
+            // Reset form
+            $('#chartForm')[0].reset();
+            $('.chart-type-option').removeClass('selected');
+            $('#measure_steps').empty();  // Clear existing measure steps
+            
+            // Set basic fields
+            $('#chart_id').val(data.id);
+            $('#chart_name').val(data.name);
+            
+            // Set table and trigger change event
+            $('#table_name').val(data.table_name).trigger('change');
+            
+            // Wait for table change to complete before setting other fields
             setTimeout(() => {
-                if (xAxis.grouping_type === 'span') {
-                    $('input[name="span_size"]').val(xAxis.grouping_value);
-                } else {
-                    $('select[name="date_grouping"]').val(xAxis.grouping_type);
-                }
+                // Parse x-axis configuration
+                const xAxis = JSON.parse(data.x_axis);
+                $('#x_axis_field').val(xAxis.field).trigger('change');
                 
-                // Parse and set y-axis configuration
-                const yAxis = JSON.parse(data.y_axis);
-                $('#measure_steps').empty();
-                
-                yAxis.forEach((measure, index) => {
-                    if (index > 0) {
+                // Wait for x-axis change to complete before setting grouping options
+                setTimeout(() => {
+                    if (xAxis.grouping_type === 'span') {
+                        $('input[name="span_size"]').val(xAxis.grouping_value);
+                    } else {
+                        $('select[name="date_grouping"]').val(xAxis.grouping_type);
+                    }
+                    
+                    // Parse and set y-axis configuration
+                    const yAxis = JSON.parse(data.y_axis);
+                    
+                    // Add first measure step if none exists
+                    if ($('#measure_steps').children().length === 0) {
                         $('#add_measure_step').click();
                     }
                     
-                    const measureStep = $('#measure_steps .measure-step').eq(index);
-                    
-                    // Set calculation field and method
-                    measureStep.find('.calculation-field').val(measure.field);
-                    measureStep.find('.calculation-method').val(measure.method);
-                    
-                    // Set operator if not first measure
-                    if (index > 0 && measure.operator) {
-                        measureStep.find('.operator-section').show();
-                        measureStep.find('.step-operator').val(measure.operator);
+                    // Add additional measure steps for each y-axis configuration
+                    for (let i = 1; i < yAxis.length; i++) {
+                        $('#add_measure_step').click();
                     }
                     
-                    // Set conditions
-                    const conditionsContainer = measureStep.find('.conditions-container');
-                    conditionsContainer.empty();
-                    
-                    if (measure.conditions && measure.conditions.length > 0) {
-                        measure.conditions.forEach((condition, condIndex) => {
-                            const conditionHtml = `
-                                <div class="condition-row">
-                                    <div class="row">
-                                        <div class="col">
-                                            <select class="form-control condition-field">
-                                                <option value="">Select a field</option>
-                                                ${getColumnOptions()}
-                                            </select>
-                                        </div>
-                                        <div class="col">
-                                            <select class="form-control condition-operator">
-                                                <option value="=">=</option>
-                                                <option value="!=">!=</option>
-                                                <option value=">">&gt;</option>
-                                                <option value=">=">&gt;=</option>
-                                                <option value="<">&lt;</option>
-                                                <option value="<=">&lt;=</option>
-                                            </select>
-                                        </div>
-                                        <div class="col">
-                                            <input type="text" class="form-control condition-value" placeholder="Value">
-                                        </div>
-                                        <div class="col-auto">
-                                            <button type="button" class="btn btn-danger remove-condition">&times;</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                            conditionsContainer.append(conditionHtml);
-                            
-                            // Set condition values after a short delay
-                            setTimeout(() => {
-                                const conditionRow = conditionsContainer.children().last();
-                                conditionRow.find('.condition-field').val(condition.field);
-                                conditionRow.find('.condition-operator').val(condition.operator);
-                                conditionRow.find('.condition-value').val(condition.value);
-                            }, 100);
-                        });
-                    } else {
-                        // Add empty condition row if no conditions exist
-                        measureStep.find('.add-condition').click();
-                    }
-                });
-                
-                // Set chart type
-                $(`.chart-type-option[data-type="${data.chart_type}"]`).addClass('selected');
-                
-                // Set time spans
-                if (data.time_spans) {
-                    const timeSpans = JSON.parse(data.time_spans);
-                    timeSpans.forEach(span => {
-                        const spanStr = JSON.stringify(span);
-                        $(`.time-span-checkbox[value='${spanStr}']`).prop('checked', true);
+                    // Now populate each measure step
+                    yAxis.forEach((measure, index) => {
+                        const measureStep = $('#measure_steps .measure-step').eq(index);
+                        
+                        // Set calculation field and method
+                        measureStep.find('.calculation-field').val(measure.field);
+                        measureStep.find('.calculation-method').val(measure.method);
+                        
+                        // Set operator if not first measure
+                        if (index > 0 && measure.operator) {
+                            measureStep.find('.operator-section').show();
+                            measureStep.find('.step-operator').val(measure.operator);
+                        }
+                        
+                        // Clear existing conditions
+                        const conditionsContainer = measureStep.find('.conditions-container');
+                        conditionsContainer.empty();
+                        
+                        // Add and populate conditions
+                        if (measure.conditions && measure.conditions.length > 0) {
+                            measure.conditions.forEach(condition => {
+                                // Add new condition row
+                                measureStep.find('.add-condition').click();
+                                
+                                // Get the last added condition row
+                                const lastCondition = conditionsContainer.children().last();
+                                
+                                // Wait a bit for the condition fields to be populated
+                                setTimeout(() => {
+                                    lastCondition.find('.condition-field').val(condition.field);
+                                    lastCondition.find('.condition-operator').val(condition.operator);
+                                    lastCondition.find('.condition-value').val(condition.value);
+                                }, 100);
+                            });
+                        } else {
+                            // Add empty condition row if no conditions exist
+                            measureStep.find('.add-condition').click();
+                        }
                     });
-                }
-                
-                // Update modal title
-                $('#chartModalTitle').text('Edit Chart');
-                
-                // Show modal
-                const modal = new bootstrap.Modal($('#addChartModal'));
-                modal.show();
+                    
+                    // Set chart type
+                    $(`.chart-type-option[data-type="${data.chart_type}"]`).addClass('selected');
+                    
+                    // Set time spans
+                    if (data.time_spans) {
+                        const timeSpans = JSON.parse(data.time_spans);
+                        console.log('Setting time spans:', timeSpans);
+                        
+                        // Uncheck all checkboxes first
+                        $('.time-span-checkbox').prop('checked', false);
+                        
+                        // Check matching time spans
+                        timeSpans.forEach(span => {
+                            $('.time-span-checkbox').each(function() {
+                                const checkboxSpan = JSON.parse($(this).val());
+                                if (JSON.stringify(checkboxSpan) === JSON.stringify(span)) {
+                                    $(this).prop('checked', true);
+                                    console.log('Matched and checked span:', span);
+                                }
+                            });
+                        });
+                    }
+                    
+                    // Update modal title
+                    $('#chartModalTitle').text('Edit Chart');
+                    
+                    // Show modal
+                    const modal = new bootstrap.Modal($('#addChartModal'));
+                    modal.show();
+                }, 500);
             }, 500);
-        }, 500);
-    }).fail(function(error) {
-        console.error('Error loading chart data:', error);
-        alert('Error loading chart data. Please try again.');
-    });
+        })
+        .fail(function(error) {
+            console.error('Error loading chart data:', error);
+            alert('Error loading chart data. Please try again.');
+        });
 }
 
 // Add this function to load and display charts
