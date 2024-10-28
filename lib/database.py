@@ -73,6 +73,35 @@ class DatabaseManager:
 
         # Data tables (AMANReporting.db) will be created dynamically
 
+        # Add this to your existing tables
+        self.TableSyncStatus = Table('TableSyncStatus', self.metadata,
+            Column('table_id', Integer, primary_key=True),
+            Column('status', String, nullable=False),  # pending, syncing, completed, error
+            Column('rows_fetched', Integer, default=0),
+            Column('error_message', String),
+            Column('last_sync', DateTime)
+        )
+
+        # Add CustomQuerySyncStatus table
+        self.CustomQuerySyncStatus = Table('CustomQuerySyncStatus', self.metadata,
+            Column('query_id', Integer, primary_key=True),
+            Column('status', String, nullable=False),  # pending, syncing, completed, error
+            Column('rows_fetched', Integer, default=0),
+            Column('error_message', String),
+            Column('last_sync', DateTime),
+            Column('execution_time', Float)  # Store query execution time in seconds
+        )
+
+        # Add RefreshHistory table
+        self.RefreshHistory = Table('RefreshHistory', self.metadata,
+            Column('id', Integer, primary_key=True),
+            Column('timestamp', DateTime, nullable=False),
+            Column('total_time', Float),
+            Column('total_rows', Integer),
+            Column('items', String),  # JSON string of refresh items
+            Column('status', String)  # completed, error
+        )
+
     def create_local_engine(self):
         """Create engine for AMANReporting.db (data storage)"""
         return create_engine(
@@ -121,12 +150,12 @@ class DatabaseManager:
         # Data tables in AMANReporting.db are created dynamically when data is fetched
 
     def get_remote_engine(self):
-        """Create and return a remote database engine using pymssql"""
+        """Create and return a remote database engine"""
         try:
             logger.info("Creating remote database engine")
             config = self.get_config()
             db_user = config['db_username']
-            db_password = config['db_password']
+            db_password = quote_plus(config['db_password'])  # Properly escape password
             db_host = config['host']
             db_port = config['port']
             db_name = config['db_name']
@@ -141,66 +170,57 @@ class DatabaseManager:
                 logger.error(f"Network connectivity test failed: {str(e)}")
                 raise Exception(f"Cannot connect to {db_host}:{db_port}. Please check if the server is accessible and the port is open.")
 
-            # Try connection with different settings
-            connection_methods = [
-                {
-                    'server': db_host,
-                    'port': int(db_port),
-                    'user': db_user,
-                    'password': db_password,
-                    'database': db_name,
-                    'timeout': 30,
-                    'login_timeout': 30,
-                    'charset': 'UTF-8',
-                    'as_dict': True,
-                    'tds_version': '7.4'  # Add TDS version
-                },
-                {
-                    'server': f"{db_host}:{db_port}",
-                    'user': db_user,
-                    'password': db_password,
-                    'database': db_name,
-                    'timeout': 30,
-                    'login_timeout': 30,
-                    'charset': 'UTF-8',
-                    'as_dict': True
-                }
-            ]
+            # Try pymssql first with properly escaped password
+            try:
+                logger.info("Trying pymssql connection...")
+                pymssql_url = f"mssql+pymssql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+                engine = create_engine(
+                    pymssql_url,
+                    connect_args={
+                        'charset': 'UTF-8',
+                        'timeout': 30,
+                        'login_timeout': 30,
+                        'tds_version': '7.4'
+                    }
+                )
+                
+                # Test the connection
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                    logger.info("Successfully connected using pymssql")
+                    return engine
+            except Exception as e:
+                logger.warning(f"pymssql connection failed: {str(e)}")
 
-            last_error = None
-            for method in connection_methods:
-                try:
-                    logger.info(f"Trying connection with settings: {str({k:v for k,v in method.items() if k != 'password'})}")
-                    
-                    # Test direct connection first
-                    import pymssql
-                    conn = pymssql.connect(**method)
-                    conn.close()
-                    logger.info("Direct connection test successful")
+            # If pymssql fails, try ODBC with properly escaped password
+            try:
+                logger.info("Trying ODBC connection...")
+                connection_string = (
+                    "DRIVER={ODBC Driver 18 for SQL Server};"
+                    f"SERVER={db_host},{db_port};"
+                    f"DATABASE={db_name};"
+                    f"UID={db_user};"
+                    f"PWD={db_password};"  # Using escaped password
+                    "TrustServerCertificate=yes;"
+                    "Encrypt=yes;"
+                )
+                
+                engine = create_engine(
+                    f"mssql+pyodbc:///?odbc_connect={quote_plus(connection_string)}",
+                    pool_pre_ping=True,
+                    pool_recycle=3600,
+                    pool_timeout=30,
+                    fast_executemany=True
+                )
 
-                    # Create SQLAlchemy engine
-                    engine = create_engine(
-                        f"mssql+pymssql://",
-                        creator=lambda: pymssql.connect(**method),
-                        pool_pre_ping=True,
-                        pool_recycle=3600,
-                        pool_timeout=30
-                    )
-
-                    # Test the engine
-                    with engine.connect() as conn:
-                        conn.execute(text("SELECT 1"))
-                        logger.info("Successfully created and tested database engine")
-                        return engine
-
-                except Exception as e:
-                    last_error = e
-                    logger.warning(f"Connection attempt failed: {str(e)}")
-                    continue
-
-            if last_error:
-                raise Exception(f"All connection attempts failed. Last error: {str(last_error)}")
-            raise Exception("Could not establish connection with any method")
+                # Test the connection
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                    logger.info("Successfully connected using ODBC")
+                    return engine
+            except Exception as e:
+                logger.error(f"ODBC connection failed: {str(e)}")
+                raise
 
         except Exception as e:
             logger.error(f"Failed to create remote database engine: {str(e)}")
@@ -266,3 +286,4 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error recreating tables: {str(e)}")
             return False
+

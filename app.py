@@ -8,6 +8,7 @@ from lib.chart_manager import ChartManager
 from datetime import datetime
 from sqlalchemy import text, inspect
 import json
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -69,12 +70,47 @@ def handle_exception(e):
     logger.error(f"Unhandled Exception: {str(e)}", exc_info=True)
     return render_template('500.html'), 500
 
+# Add this helper function at the top with other imports
+def get_last_updated():
+    try:
+        with db_manager.app_config_engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT timestamp 
+                    FROM RefreshHistory 
+                    WHERE status = 'completed' 
+                    ORDER BY timestamp DESC 
+                    LIMIT 1
+                """)
+            ).fetchone()
+            
+            if result and result.timestamp:
+                # Convert string to datetime if needed
+                if isinstance(result.timestamp, str):
+                    from datetime import datetime
+                    try:
+                        timestamp = datetime.strptime(result.timestamp, '%Y-%m-%d %H:%M:%S.%f')
+                    except ValueError:
+                        try:
+                            timestamp = datetime.strptime(result.timestamp, '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            return 'Invalid timestamp format'
+                else:
+                    timestamp = result.timestamp
+                    
+                return timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            return 'Never'
+    except Exception as e:
+        logger.error(f"Error getting last updated timestamp: {str(e)}")
+        return 'Unknown'
+
 # Routes
 @app.route('/')
 def index():
     try:
         logger.info("Accessing landing page")
-        return render_template('index.html')
+        last_updated = get_last_updated()
+        return render_template('index.html', last_updated=last_updated)
     except Exception as e:
         logger.error(f"Error accessing landing page: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -83,6 +119,7 @@ def index():
 def settings():
     logger.info("Accessing settings page")
     config = db_manager.get_config()
+    last_updated = get_last_updated()
     
     with db_manager.app_config_engine.connect() as connection:
         result = connection.execute(text("SELECT * FROM ConfigTables"))
@@ -94,11 +131,13 @@ def settings():
     return render_template('settings.html', 
                          config=config, 
                          added_tables=added_tables, 
-                         custom_queries=custom_queries)
+                         custom_queries=custom_queries,
+                         last_updated=last_updated)
 
 @app.route('/stats')
 def stats():
-    return render_template('stats.html')
+    last_updated = get_last_updated()
+    return render_template('stats.html', last_updated=last_updated)
 
 # Add this function to convert SQLAlchemy Row objects to dictionaries
 def row_to_dict(row):
@@ -134,11 +173,14 @@ def stats_config():
             "Minimum"
         ]
         
+        last_updated = get_last_updated()
+        
         return render_template('stats_config.html',
                              available_tables=available_tables,
                              time_span_pairs=time_span_pairs,
                              calculation_methods=calculation_methods,
-                             kpis=kpis)
+                             kpis=kpis,
+                             last_updated=last_updated)
     except Exception as e:
         logger.error(f"Error in stats_config: {str(e)}")
         flash(f'Error loading KPI configurations: {str(e)}', 'error')
@@ -203,47 +245,231 @@ def delete_chart(chart_id):
         logger.error(f"Error deleting chart: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/refresh_data', methods=['POST'])
+# Add this to store refresh status
+refresh_status = {
+    'in_progress': False,
+    'items': [],
+    'start_time': None,
+    'completed': False
+}
+
+@app.route('/refresh_data_route', methods=['POST'])
 def refresh_data_route():
+    global refresh_status
     try:
-        logger.info("Starting data refresh")
-        source_engine = db_manager.get_remote_engine()
-        
-        if not db_manager.test_connection(source_engine):
-            flash('Failed to connect to source database', 'error')
-            return redirect(url_for('settings'))
-        
-        # Refresh data using the data_fetcher module
-        from data_fetcher import ATMDataFetcher
-        fetcher = ATMDataFetcher(source_engine, db_manager.local_engine)
-        
-        with db_manager.app_config_engine.connect() as conn:
-            result = conn.execute(text("SELECT name, update_column FROM ConfigTables"))
-            added_tables = result.fetchall()
+        if refresh_status['in_progress']:
+            return jsonify({'error': 'Refresh already in progress'}), 400
             
-            for table_name, update_column in added_tables:
-                try:
-                    # Get the last record ID from the local database
-                    last_record_id = fetcher.get_last_record_id(table_name, update_column)
-                    logger.info(f"Last record ID for {table_name}: {last_record_id}")
-                    
-                    # Fetch and store new data
-                    fetched_data = fetcher.fetch_and_store_data(table_name, update_column, last_record_id)
-                    if not fetched_data.empty:
-                        logger.info(f"Fetched {len(fetched_data)} new records for {table_name}")
-                    else:
-                        logger.info(f"No new data for {table_name}")
-                except Exception as e:
-                    logger.error(f"Error refreshing table {table_name}: {str(e)}")
-                    flash(f'Error refreshing table {table_name}: {str(e)}', 'error')
+        refresh_status.update({
+            'in_progress': True,
+            'items': [],
+            'start_time': time.time(),
+            'completed': False
+        })
         
-        flash('Data refreshed successfully', 'success')
-        return redirect(url_for('settings'))
+        # Start background task
+        import threading
+        thread = threading.Thread(target=refresh_data_task)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({'message': 'Refresh started'})
         
     except Exception as e:
-        logger.error(f"Error in refresh_data_route: {str(e)}", exc_info=True)
-        flash(f'Error refreshing data: {str(e)}', 'error')
-        return redirect(url_for('settings'))
+        logger.error(f"Error starting refresh: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+def refresh_data_task():
+    global refresh_status
+    try:
+        # Get tables and queries to refresh
+        with db_manager.app_config_engine.connect() as conn:
+            tables = conn.execute(text("SELECT * FROM ConfigTables")).fetchall()
+            queries = conn.execute(text("SELECT * FROM CustomQueries")).fetchall()
+        
+        start_time = time.time()
+        
+        # Process tables
+        for table in tables:
+            # Get total row count first
+            with db_manager.get_remote_engine().connect() as remote_conn:
+                total_count = remote_conn.execute(text(f"SELECT COUNT(*) FROM {table.name}")).scalar()
+            
+            refresh_status['items'].append({
+                'name': table.name,
+                'type': 'table',
+                'status': 'syncing',
+                'start_time': time.time(),
+                'rows_fetched': 0,
+                'total_rows': total_count,
+                'execution_time': 0
+            })
+            
+            try:
+                # Fetch and store data
+                from data_fetcher import ATMDataFetcher
+                fetcher = ATMDataFetcher(db_manager.get_remote_engine(), db_manager.local_engine)
+                
+                # Update the fetch_and_store_data method to accept a callback
+                def progress_callback(fetched_rows):
+                    item = next(item for item in refresh_status['items'] if item['name'] == table.name)
+                    item.update({
+                        'rows_fetched': fetched_rows,
+                        'progress': (fetched_rows / total_count * 100) if total_count > 0 else 0
+                    })
+                
+                data = fetcher.fetch_and_store_data(table.name, table.update_column, None, progress_callback)
+                
+                # Update status
+                item = next(item for item in refresh_status['items'] if item['name'] == table.name)
+                item.update({
+                    'status': 'completed',
+                    'rows_fetched': len(data) if data is not None else 0,
+                    'total_rows': total_count,
+                    'execution_time': round(time.time() - item['start_time'], 2)
+                })
+                
+            except Exception as e:
+                logger.error(f"Error refreshing table {table.name}: {str(e)}")
+                item = next(item for item in refresh_status['items'] if item['name'] == table.name)
+                item.update({
+                    'status': 'error',
+                    'error_message': str(e),
+                    'execution_time': round(time.time() - item['start_time'], 2)
+                })
+        
+        # Process custom queries
+        for query in queries:
+            # Get total row count first by executing a COUNT version of the query
+            count_query = f"SELECT COUNT(*) FROM ({query.sql_query}) as subquery"
+            with db_manager.get_remote_engine().connect() as remote_conn:
+                total_count = remote_conn.execute(text(count_query)).scalar()
+            
+            refresh_status['items'].append({
+                'name': query.name,
+                'type': 'query',
+                'status': 'syncing',
+                'start_time': time.time(),
+                'rows_fetched': 0,
+                'total_rows': total_count,
+                'execution_time': 0
+            })
+            
+            try:
+                # Execute query with progress tracking
+                rows_fetched = 0
+                with db_manager.get_remote_engine().connect() as remote_conn:
+                    result = remote_conn.execution_options(stream_results=True).execute(text(query.sql_query))
+                    
+                    # Process results in chunks
+                    chunk_size = 1000
+                    chunks = []
+                    while True:
+                        chunk = result.fetchmany(chunk_size)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        rows_fetched += len(chunk)
+                        
+                        # Update progress
+                        item = next(item for item in refresh_status['items'] if item['name'] == query.name)
+                        item.update({
+                            'rows_fetched': rows_fetched,
+                            'progress': (rows_fetched / total_count * 100) if total_count > 0 else 0
+                        })
+                    
+                    # Combine all chunks and store results
+                    if chunks:
+                        import pandas as pd
+                        df = pd.DataFrame([row._mapping for chunk in chunks for row in chunk])
+                        df.columns = result.keys()
+                        
+                        with db_manager.local_engine.begin() as local_conn:
+                            df.to_sql(f"custom_query_{query.id}", local_conn, if_exists='replace', index=False)
+                    
+                    # Update status
+                    item = next(item for item in refresh_status['items'] if item['name'] == query.name)
+                    item.update({
+                        'status': 'completed',
+                        'rows_fetched': rows_fetched,
+                        'total_rows': total_count,
+                        'execution_time': round(time.time() - item['start_time'], 2)
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Error executing query {query.name}: {str(e)}")
+                item = next(item for item in refresh_status['items'] if item['name'] == query.name)
+                item.update({
+                    'status': 'error',
+                    'error_message': str(e),
+                    'execution_time': round(time.time() - item['start_time'], 2)
+                })
+        
+        # Update completion status
+        refresh_status.update({
+            'completed': True,
+            'in_progress': False,
+            'total_time': round(time.time() - start_time, 2)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in refresh task: {str(e)}")
+        refresh_status.update({
+            'completed': True,
+            'in_progress': False,
+            'error': str(e)
+        })
+
+@app.route('/refresh_status')
+def get_refresh_status():
+    """Get the current status of the refresh operation"""
+    global refresh_status
+    if refresh_status['in_progress']:
+        return jsonify(refresh_status)
+    else:
+        # Return last refresh history
+        try:
+            with db_manager.app_config_engine.connect() as conn:
+                result = conn.execute(
+                    text("""
+                        SELECT timestamp, total_time, total_rows, items, status
+                        FROM RefreshHistory
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    """)
+                ).fetchone()
+                
+                if result:
+                    # Parse the timestamp string into a datetime object if it's a string
+                    timestamp = result.timestamp
+                    if isinstance(timestamp, str):
+                        from datetime import datetime
+                        try:
+                            timestamp = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S.%f')
+                        except ValueError:
+                            try:
+                                timestamp = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                            except ValueError:
+                                timestamp = datetime.now()
+                    
+                    return jsonify({
+                        'completed': True,
+                        'in_progress': False,
+                        'items': json.loads(result.items),
+                        'total_time': result.total_time,
+                        'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),  # Format as string
+                        'total_rows': result.total_rows,
+                        'status': result.status
+                    })
+                return jsonify({
+                    'completed': True,
+                    'in_progress': False,
+                    'items': [],
+                    'error': 'No refresh history found'
+                })
+        except Exception as e:
+            logger.error(f"Error getting refresh status: {str(e)}")
+            return jsonify({'error': str(e)}), 500
 
 # Add these routes to app.py
 
@@ -353,58 +579,290 @@ def get_layout():
 @app.route('/add_table', methods=['POST'])
 def add_table():
     try:
-        table_name = request.form['table_name']
-        update_column = request.form['update_column']
+        table_name = request.form.get('table_name')
+        update_column = request.form.get('update_column')
         
+        if not table_name or not update_column:
+            flash('Table name and update column are required', 'error')
+            return redirect(url_for('settings'))
+            
+        # Add table to configuration
         with db_manager.app_config_engine.begin() as conn:
+            result = conn.execute(
+                text("INSERT INTO ConfigTables (name, update_column) VALUES (:name, :update_column) RETURNING id"),
+                {'name': table_name, 'update_column': update_column}
+            )
+            table_id = result.fetchone()[0]
+            
+            # Add initial status
             conn.execute(
-                text("INSERT INTO ConfigTables (name, update_column) VALUES (:name, :update_column)"),
-                {"name": table_name, "update_column": update_column}
+                text("""
+                    INSERT INTO TableSyncStatus 
+                    (table_id, status, rows_fetched, last_sync) 
+                    VALUES (:table_id, 'pending', 0, CURRENT_TIMESTAMP)
+                """),
+                {'table_id': table_id}
             )
         
-        flash('Table added successfully', 'success')
+        # Start background task to fetch data
+        import threading
+        thread = threading.Thread(target=fetch_table_data, args=(table_id, table_name, update_column))
+        thread.daemon = True
+        thread.start()
+        
+        flash('Table added successfully. Data sync started.', 'success')
         return redirect(url_for('settings'))
+        
     except Exception as e:
         logger.error(f"Error adding table: {str(e)}")
         flash(f'Error adding table: {str(e)}', 'error')
         return redirect(url_for('settings'))
 
+def fetch_table_data(table_id, table_name, update_column):
+    """Background task to fetch table data"""
+    try:
+        # Update status to 'syncing'
+        with db_manager.app_config_engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE TableSyncStatus 
+                    SET status = 'syncing', last_sync = CURRENT_TIMESTAMP 
+                    WHERE table_id = :table_id
+                """),
+                {'table_id': table_id}
+            )
+        
+        # Fetch and store data
+        from data_fetcher import ATMDataFetcher
+        fetcher = ATMDataFetcher(db_manager.get_remote_engine(), db_manager.local_engine)
+        data = fetcher.fetch_and_store_data(table_name, update_column, None)
+        rows_fetched = len(data) if data is not None else 0
+        
+        # Update status to 'completed'
+        with db_manager.app_config_engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE TableSyncStatus 
+                    SET status = 'completed', 
+                        rows_fetched = :rows_fetched, 
+                        last_sync = CURRENT_TIMESTAMP 
+                    WHERE table_id = :table_id
+                """),
+                {'table_id': table_id, 'rows_fetched': rows_fetched}
+            )
+            
+    except Exception as e:
+        logger.error(f"Error fetching data for table {table_name}: {str(e)}")
+        # Update status to 'error'
+        with db_manager.app_config_engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE TableSyncStatus 
+                    SET status = 'error', 
+                        error_message = :error,
+                        last_sync = CURRENT_TIMESTAMP 
+                    WHERE table_id = :table_id
+                """),
+                {'table_id': table_id, 'error': str(e)}
+            )
+
+@app.route('/get_table_status/<int:table_id>')
+def get_table_status(table_id):
+    """Get the current sync status of a table"""
+    try:
+        with db_manager.app_config_engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT status, rows_fetched, error_message, 
+                           strftime('%Y-%m-%d %H:%M:%S', last_sync) as last_sync 
+                    FROM TableSyncStatus 
+                    WHERE table_id = :table_id
+                """),
+                {'table_id': table_id}
+            ).fetchone()
+            
+            if result:
+                return jsonify({
+                    'status': result.status,
+                    'rows_fetched': result.rows_fetched,
+                    'error_message': result.error_message,
+                    'last_sync': result.last_sync
+                })
+            return jsonify({'error': 'Table not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting table status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/add_custom_query', methods=['POST'])
 def add_custom_query():
     try:
-        query_data = {
-            'name': request.form['name'],
-            'sql_query': request.form['sql_query'],
-            'update_column': request.form['update_column']
-        }
+        query_name = request.form.get('query_name')
+        sql_query = request.form.get('sql_query')
+        update_column = request.form.get('update_column')
+        query_id = request.form.get('query_id')
         
+        if not all([query_name, sql_query, update_column]):
+            flash('All fields are required', 'error')
+            return redirect(url_for('settings'))
+            
+        # Add or update query
         with db_manager.app_config_engine.begin() as conn:
-            if request.form.get('query_id'):  # Update existing query
-                query_data['id'] = request.form['query_id']
+            if query_id:  # Update existing query
                 conn.execute(
                     text("""
                         UPDATE CustomQueries 
-                        SET name=:name, sql_query=:sql_query, update_column=:update_column
-                        WHERE id=:id
+                        SET name = :name, sql_query = :sql_query, update_column = :update_column 
+                        WHERE id = :id
                     """),
-                    query_data
+                    {'id': query_id, 'name': query_name, 'sql_query': sql_query, 'update_column': update_column}
                 )
-                flash('Custom query updated successfully', 'success')
-            else:  # Create new query
+            else:  # Add new query
+                result = conn.execute(
+                    text("""
+                        INSERT INTO CustomQueries (name, sql_query, update_column) 
+                        VALUES (:name, :sql_query, :update_column)
+                        RETURNING id
+                    """),
+                    {'name': query_name, 'sql_query': sql_query, 'update_column': update_column}
+                )
+                query_id = result.fetchone()[0]
+                
+                # Add initial sync status
                 conn.execute(
                     text("""
-                        INSERT INTO CustomQueries (name, sql_query, update_column)
-                        VALUES (:name, :sql_query, :update_column)
+                        INSERT INTO CustomQuerySyncStatus 
+                        (query_id, status, rows_fetched, last_sync) 
+                        VALUES (:query_id, 'pending', 0, CURRENT_TIMESTAMP)
                     """),
-                    query_data
+                    {'query_id': query_id}
                 )
-                flash('Custom query added successfully', 'success')
         
+        # Start background task to execute query
+        import threading
+        thread = threading.Thread(target=execute_custom_query, args=(query_id,))
+        thread.daemon = True
+        thread.start()
+        
+        flash('Custom query saved successfully. Data sync started.', 'success')
         return redirect(url_for('settings'))
+        
     except Exception as e:
-        logger.error(f"Error saving custom query: {str(e)}")
-        flash(f'Error saving custom query: {str(e)}', 'error')
+        logger.error(f"Error adding custom query: {str(e)}")
+        flash(f'Error adding custom query: {str(e)}', 'error')
         return redirect(url_for('settings'))
+
+def execute_custom_query(query_id):
+    """Background task to execute custom query"""
+    try:
+        import time
+        start_time = time.time()
+        
+        # Update status to 'syncing'
+        with db_manager.app_config_engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE CustomQuerySyncStatus 
+                    SET status = 'syncing', last_sync = CURRENT_TIMESTAMP 
+                    WHERE query_id = :query_id
+                """),
+                {'query_id': query_id}
+            )
+            
+            # Get query details
+            result = conn.execute(
+                text("SELECT name, sql_query FROM CustomQueries WHERE id = :id"),
+                {'id': query_id}
+            ).fetchone()
+            
+            if not result:
+                raise Exception("Query not found")
+                
+            query_name = result.name
+            sql_query = result.sql_query
+        
+        # Execute query on remote database
+        with db_manager.get_remote_engine().connect() as remote_conn:
+            result = remote_conn.execute(text(sql_query))
+            rows = result.fetchall()
+            
+            # Store results in local database
+            if rows:
+                import pandas as pd
+                df = pd.DataFrame(rows)
+                df.columns = result.keys()
+                
+                with db_manager.local_engine.begin() as local_conn:
+                    # Create or replace table
+                    df.to_sql(f"custom_query_{query_id}", local_conn, if_exists='replace', index=False)
+                    
+                rows_fetched = len(rows)
+            else:
+                rows_fetched = 0
+        
+        execution_time = time.time() - start_time
+        
+        # Update status to 'completed'
+        with db_manager.app_config_engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE CustomQuerySyncStatus 
+                    SET status = 'completed', 
+                        rows_fetched = :rows_fetched,
+                        execution_time = :execution_time,
+                        last_sync = CURRENT_TIMESTAMP 
+                    WHERE query_id = :query_id
+                """),
+                {
+                    'query_id': query_id, 
+                    'rows_fetched': rows_fetched,
+                    'execution_time': execution_time
+                }
+            )
+            
+    except Exception as e:
+        logger.error(f"Error executing custom query {query_id}: {str(e)}")
+        # Update status to 'error'
+        with db_manager.app_config_engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE CustomQuerySyncStatus 
+                    SET status = 'error', 
+                        error_message = :error,
+                        last_sync = CURRENT_TIMESTAMP 
+                    WHERE query_id = :query_id
+                """),
+                {'query_id': query_id, 'error': str(e)}
+            )
+
+@app.route('/get_custom_query_status/<int:query_id>')
+def get_custom_query_status(query_id):
+    """Get the current sync status of a custom query"""
+    try:
+        with db_manager.app_config_engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT status, rows_fetched, error_message, execution_time,
+                           strftime('%Y-%m-%d %H:%M:%S', last_sync) as last_sync 
+                    FROM CustomQuerySyncStatus 
+                    WHERE query_id = :query_id
+                """),
+                {'query_id': query_id}
+            ).fetchone()
+            
+            if result:
+                return jsonify({
+                    'status': result.status,
+                    'rows_fetched': result.rows_fetched,
+                    'error_message': result.error_message,
+                    'execution_time': result.execution_time,
+                    'last_sync': result.last_sync
+                })
+            return jsonify({'error': 'Query not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting query status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/delete_custom_query/<int:query_id>', methods=['POST'])
 def delete_custom_query(query_id):
@@ -470,21 +928,29 @@ def get_db_structure():
             return jsonify({'error': 'Could not connect to database'}), 500
         
         inspector = inspect(source_engine)
-        tables = {}
+        tables = []  # Change from dict to list
         
-        for table_name in inspector.get_table_names():
-            columns = []
-            for column in inspector.get_columns(table_name):
-                columns.append({
-                    'name': column['name'],
-                    'type': str(column['type']),
-                    'nullable': column['nullable']
+        # Get all tables from the remote database
+        for table_name in inspector.get_table_names(schema='dbo'):  # Add schema='dbo' for SQL Server
+            try:
+                columns = []
+                for column in inspector.get_columns(table_name, schema='dbo'):  # Add schema here too
+                    columns.append({
+                        'name': column['name'],
+                        'type': str(column['type']),
+                        'nullable': column['nullable']
+                    })
+                tables.append({  # Add table object to list
+                    'name': table_name,
+                    'columns': columns
                 })
-            tables[table_name] = columns
+                logger.info(f"Retrieved {len(columns)} columns for table {table_name}")
+            except Exception as e:
+                logger.error(f"Error getting columns for table {table_name}: {str(e)}")
+                continue
         
-        return jsonify({
-            'tables': tables
-        })
+        logger.info(f"Retrieved structure for {len(tables)} tables")
+        return jsonify(tables)  # Return array directly
         
     except Exception as e:
         logger.error(f"Error getting database structure: {str(e)}")
@@ -537,9 +1003,10 @@ def save_kpi():
 @app.route('/get_table_columns/<table_name>')
 def get_table_columns(table_name):
     try:
-        # Get column information from the local database
-        with db_manager.local_engine.connect() as conn:
-            inspector = inspect(db_manager.local_engine)
+        # Get column information from the remote database
+        source_engine = db_manager.get_remote_engine()
+        with source_engine.connect() as conn:
+            inspector = inspect(source_engine)
             columns = []
             for column in inspector.get_columns(table_name):
                 columns.append({
@@ -550,6 +1017,7 @@ def get_table_columns(table_name):
             
             # Return column names as a simple list for dropdowns
             column_names = [col['name'] for col in columns]
+            logger.info(f"Retrieved {len(column_names)} columns for table {table_name}")
             return jsonify(column_names)
             
     except Exception as e:
@@ -582,6 +1050,106 @@ def get_column_info(table_name, column_name):
             
     except Exception as e:
         logger.error(f"Error getting column info for {table_name}.{column_name}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Move this route up with other routes, before the main execution block
+@app.route('/delete_table/<int:table_id>', methods=['POST'])
+def delete_table(table_id):
+    try:
+        with db_manager.app_config_engine.begin() as conn:
+            # Get the table name before deleting
+            result = conn.execute(
+                text("SELECT name FROM ConfigTables WHERE id = :id"),
+                {'id': table_id}
+            ).fetchone()
+            
+            if result:
+                table_name = result[0]
+                # Drop the table from local database if it exists
+                with db_manager.local_engine.begin() as local_conn:
+                    local_conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+                
+                # Delete the table configuration
+                conn.execute(
+                    text("DELETE FROM ConfigTables WHERE id = :id"),
+                    {'id': table_id}
+                )
+                
+            flash('Table configuration deleted successfully', 'success')
+            
+    except Exception as e:
+        logger.error(f"Error deleting table: {str(e)}")
+        flash(f'Error deleting table: {str(e)}', 'error')
+        
+    return redirect(url_for('settings'))
+
+@app.route('/fetch_manually/<type>/<int:id>', methods=['POST'])
+def fetch_manually(type, id):
+    try:
+        if type == 'table':
+            # Get table info
+            with db_manager.app_config_engine.connect() as conn:
+                table = conn.execute(
+                    text("SELECT name, update_column FROM ConfigTables WHERE id = :id"),
+                    {'id': id}
+                ).fetchone()
+                
+                if not table:
+                    return jsonify({'error': 'Table not found'}), 404
+                
+                # Update status to pending
+                conn.execute(
+                    text("""
+                        UPDATE TableSyncStatus 
+                        SET status = 'pending', last_sync = CURRENT_TIMESTAMP 
+                        WHERE table_id = :id
+                    """),
+                    {'id': id}
+                )
+                
+                # Start background task to fetch data
+                import threading
+                thread = threading.Thread(
+                    target=fetch_table_data,
+                    args=(id, table.name, table.update_column)
+                )
+                thread.daemon = True
+                thread.start()
+                
+        elif type == 'query':
+            # Get query info
+            with db_manager.app_config_engine.connect() as conn:
+                query = conn.execute(
+                    text("SELECT * FROM CustomQueries WHERE id = :id"),
+                    {'id': id}
+                ).fetchone()
+                
+                if not query:
+                    return jsonify({'error': 'Query not found'}), 404
+                
+                # Update status to pending
+                conn.execute(
+                    text("""
+                        UPDATE CustomQuerySyncStatus 
+                        SET status = 'pending', last_sync = CURRENT_TIMESTAMP 
+                        WHERE query_id = :id
+                    """),
+                    {'id': id}
+                )
+                
+                # Start background task to execute query
+                import threading
+                thread = threading.Thread(
+                    target=execute_custom_query,
+                    args=(id,)
+                )
+                thread.daemon = True
+                thread.start()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error initiating manual fetch: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Main execution

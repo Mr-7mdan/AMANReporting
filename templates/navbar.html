@@ -1,35 +1,316 @@
-<nav class="navbar navbar-expand-lg navbar-light bg-white fixed-top">
+<nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
     <div class="container-fluid">
-        <a class="navbar-brand" href="{{ url_for('index') }}">
-            <i class="fas fa-chart-line me-2"></i>ATM Data Management
-        </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
-                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+        <a class="navbar-brand" href="{{ url_for('index') }}">ATM Data Management</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
             <span class="navbar-toggler-icon"></span>
         </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
+        
+        <div class="collapse navbar-collapse" id="navbarContent">
             <ul class="navbar-nav me-auto">
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('settings') }}">
-                        <i class="fas fa-cog me-1"></i>Settings
-                    </a>
+                    <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('stats') }}">
-                        <i class="fas fa-chart-bar me-1"></i>Stats
-                    </a>
+                    <a class="nav-link" href="{{ url_for('stats') }}">Stats</a>
                 </li>
             </ul>
+            
             <div class="d-flex align-items-center">
-                <form class="me-3" action="{{ url_for('refresh_data_route') }}" method="POST">
-                    <button class="btn btn-outline-primary" type="submit">
-                        <i class="fas fa-sync-alt me-1"></i>Refresh Data
+                <div class="refresh-status-container me-3">
+                    <span class="last-updated" data-bs-toggle="tooltip" title="Click for details">
+                        Last Updated: {{ last_updated }}
+                    </span>
+                    <!-- Status tooltip will be inserted here -->
+                    <div class="refresh-status-tooltip" style="display: none;">
+                        <div class="tooltip-header">
+                            <span class="title">Refresh Status</span>
+                            <button type="button" class="btn-close btn-close-white btn-sm"></button>
+                        </div>
+                        <div class="status-content">
+                            <div class="status-list"></div>
+                            <div class="status-summary" style="display: none;">
+                                <hr>
+                                <div class="summary-content"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <form action="{{ url_for('refresh_data_route') }}" method="POST" class="refresh-form" id="refresh-form">
+                    <button type="submit" class="btn btn-outline-primary refresh-btn">
+                        <i class="fas fa-sync-alt"></i> Refresh Data
                     </button>
                 </form>
-                <span class="last-updated">
-                    <i class="far fa-clock me-1"></i>Last Updated: {{ last_updated }}
-                </span>
             </div>
         </div>
     </div>
 </nav>
+
+<style>
+.refresh-status-container {
+    position: relative;
+}
+
+.refresh-status-tooltip {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 300px;  /* Changed from fixed width to min-width */
+    max-width: 600px;  /* Added max-width */
+    width: max-content;  /* Allow content to determine width */
+    background: #343a40;
+    color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    margin-top: 10px;
+}
+
+/* Ensure tooltip doesn't go off-screen on mobile */
+@media (max-width: 768px) {
+    .refresh-status-tooltip {
+        right: -10px;  /* Slight offset from right edge */
+        width: calc(100vw - 40px);  /* Full viewport width minus margins */
+        max-width: 100vw;
+        min-width: 250px;
+    }
+}
+
+.tooltip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.tooltip-header .title {
+    font-weight: 500;
+}
+
+.status-content {
+    padding: 10px 15px;
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: visible;  /* Prevent horizontal scroll */
+    word-wrap: break-word;  /* Allow long words to break */
+}
+
+.status-item {
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+    white-space: normal;  /* Allow text to wrap */
+}
+
+.status-item .name {
+    font-weight: 500;
+    margin-bottom: 2px;
+    word-break: break-word;  /* Break long table names */
+}
+
+.status-item .details {
+    font-size: 0.8rem;
+    opacity: 0.8;
+    word-break: break-word;  /* Break long details */
+}
+
+.status-item .progress {
+    height: 4px;
+    margin-top: 5px;
+    background-color: rgba(255,255,255,0.1);
+}
+
+.status-item .progress-bar {
+    background-color: #0d6efd;
+    transition: width 0.3s ease;
+}
+
+.status-summary {
+    font-size: 0.85rem;
+}
+
+.last-updated {
+    cursor: pointer;
+}
+
+.refresh-btn:disabled {
+    cursor: not-allowed;
+}
+
+.status-item.completed .name::after {
+    content: '✓';
+    color: #28a745;
+    margin-left: 5px;
+}
+
+.status-item.error .name::after {
+    content: '⚠';
+    color: #dc3545;
+    margin-left: 5px;
+}
+</style>
+
+{% block scripts %}
+<script>
+// Wait for jQuery to be loaded
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof jQuery === 'undefined') {
+        console.error('jQuery is not loaded!');
+        return;
+    }
+
+    $(function() {
+        let refreshInProgress = false;
+        const tooltipContainer = $('.refresh-status-tooltip');
+        const statusList = tooltipContainer.find('.status-list');
+        const statusSummary = tooltipContainer.find('.status-summary');
+        
+        // Show tooltip on last updated click
+        $('.last-updated').click(function(e) {
+            e.stopPropagation();
+            tooltipContainer.fadeIn(200);
+            
+            // Get last refresh status
+            $.get('/refresh_status')
+                .done(function(status) {
+                    if (status.error) {
+                        showError(status.error);
+                    } else {
+                        updateStatusDisplay(status);
+                        if (status.completed && !status.in_progress) {
+                            showSummary(status);
+                        }
+                    }
+                })
+                .fail(function(error) {
+                    showError('Failed to get refresh status');
+                });
+        });
+        
+        // Hide tooltip on close button click
+        tooltipContainer.find('.btn-close').click(function(e) {
+            e.stopPropagation();
+            tooltipContainer.fadeOut(200);
+        });
+        
+        // Hide tooltip when clicking outside
+        $(document).click(function(e) {
+            if (!$(e.target).closest('.refresh-status-container').length) {
+                tooltipContainer.fadeOut(200);
+            }
+        });
+        
+        // Handle refresh form submission
+        $('#refresh-form').on('submit', function(e) {
+            e.preventDefault();  // Prevent form from submitting normally
+            if (refreshInProgress) return;
+            
+            refreshInProgress = true;
+            const refreshBtn = $(this).find('.refresh-btn');
+            refreshBtn.prop('disabled', true);
+            
+            // Show tooltip
+            tooltipContainer.fadeIn(200);
+            statusList.empty();
+            statusSummary.hide();
+            
+            // Start the refresh process using AJAX
+            $.ajax({
+                url: $(this).attr('action'),
+                method: 'POST',
+                success: function(response) {
+                    // Start polling for status updates
+                    pollRefreshStatus();
+                },
+                error: function(error) {
+                    showError('Failed to start refresh process');
+                    refreshBtn.prop('disabled', false);
+                    refreshInProgress = false;
+                }
+            });
+        });
+        
+        function pollRefreshStatus() {
+            $.get('/refresh_status')
+                .done(function(status) {
+                    updateStatusDisplay(status);
+                    
+                    if (status.completed) {
+                        refreshInProgress = false;
+                        $('.refresh-btn').prop('disabled', false);
+                        showSummary(status);
+                    } else {
+                        setTimeout(pollRefreshStatus, 1000);
+                    }
+                })
+                .fail(function(error) {
+                    showError('Failed to get refresh status');
+                    refreshInProgress = false;
+                    $('.refresh-btn').prop('disabled', false);
+                });
+        }
+        
+        function updateStatusDisplay(status) {
+            statusList.empty();
+            
+            status.items.forEach(item => {
+                const statusItem = $(`
+                    <div class="status-item ${item.status}">
+                        <div class="name">${item.name}</div>
+                        <div class="details">
+                            ${item.status === 'completed' ? 
+                                `${item.rows_fetched.toLocaleString()} rows • ${item.execution_time}s` : 
+                                item.status === 'error' ? 
+                                item.error_message : 
+                                'Processing...'}
+                        </div>
+                        ${item.status === 'syncing' ? `
+                            <div class="progress">
+                                <div class="progress-bar" style="width: ${item.progress || 0}%"></div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `);
+                statusList.append(statusItem);
+            });
+        }
+        
+        function showSummary(status) {
+            const summary = {
+                totalTables: status.items.length,
+                completedTables: status.items.filter(i => i.status === 'completed').length,
+                totalRows: status.total_rows || status.items.reduce((sum, i) => sum + (i.rows_fetched || 0), 0),
+                totalTime: status.total_time,
+                timestamp: status.timestamp ? new Date(status.timestamp).toLocaleString() : new Date().toLocaleString()
+            };
+            
+            statusSummary.find('.summary-content').html(`
+                Refreshed ${summary.completedTables}/${summary.totalTables} tables<br>
+                Total rows: ${summary.totalRows.toLocaleString()}<br>
+                Total time: ${summary.totalTime}s<br>
+                <small class="text-muted">Last refresh: ${summary.timestamp}</small>
+            `);
+            
+            statusSummary.fadeIn(200);
+            
+            // Update last updated text
+            $('.last-updated').text(`Last Updated: ${summary.timestamp}`);
+            
+            // Only auto-hide if it's a new refresh
+            if (status.in_progress) {
+                setTimeout(() => tooltipContainer.fadeOut(200), 5000);
+            }
+        }
+        
+        function showError(message) {
+            statusList.html(`
+                <div class="status-item error">
+                    <div class="name">Error</div>
+                    <div class="details">${message}</div>
+                </div>
+            `);
+        }
+    });
+});
+</script>
+{% endblock %}
