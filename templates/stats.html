@@ -172,12 +172,128 @@
     }
 }
 
-/* Rest of your existing styles... */
+/* Position Controls */
+.position-controls {
+    position: absolute;
+    top: -15px;
+    right: 10px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    padding: 5px;
+    display: none;
+    z-index: 100;
+    gap: 2px;
+}
+
+.customize-mode .position-controls {
+    display: grid;
+    grid-template-areas: 
+        ". up ."
+        "left center right"
+        ". down .";
+}
+
+.position-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #dee2e6;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.position-btn:hover {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+}
+
+.position-btn.up { grid-area: up; }
+.position-btn.down { grid-area: down; }
+.position-btn.left { grid-area: left; }
+.position-btn.right { grid-area: right; }
+.position-btn.remove { 
+    grid-area: center;
+    color: #dc3545;
+}
+
+/* Spacer Button */
+.spacer-btn {
+    width: 100%;
+    height: 30px;
+    border: 2px dashed #dee2e6;
+    background: transparent;
+    border-radius: 8px;
+    margin: 10px 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.customize-mode .spacer-btn {
+    display: flex;
+}
+
+.spacer-btn:hover {
+    border-color: #0d6efd;
+    background: rgba(13, 110, 253, 0.05);
+}
+
+.spacer-btn i {
+    color: #6c757d;
+    transition: color 0.2s ease;
+}
+
+.spacer-btn:hover i {
+    color: #0d6efd;
+}
+
+/* Spacer */
+.card-spacer {
+    height: 100px;
+    background: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    margin: 10px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-spacer .remove-spacer {
+    color: #dc3545;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.card-spacer .remove-spacer:hover {
+    background: rgba(220, 53, 69, 0.1);
+}
+
+/* Position indicator for cards */
+.kpi-card, .chart-card {
+    position: relative;
+}
+
+.customize-mode .kpi-card,
+.customize-mode .chart-card {
+    cursor: default;
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="dashboard-container">
+    <!-- Header with controls -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Statistics</h2>
         <div class="btn-group">
@@ -192,20 +308,16 @@
                     <li><a class="dropdown-item" href="#" data-grid-size="144">Small</a></li>
                 </ul>
             </div>
-            <button id="customize-btn" class="btn btn-light customize-btn" onclick="toggleCustomizeMode()">
-                <i class="fas fa-grip-vertical"></i> Customize Layout
-            </button>
             <a href="{{ url_for('stats_config') }}" class="btn btn-light">
                 <i class="fas fa-cog"></i> Configure KPIs
             </a>
-            <a href="{{ url_for('charts_config') }}" class="btn btn-light">
-                <i class="fas fa-chart-line"></i> Configure Charts
-            </a>
+            <button id="refresh-btn" class="btn btn-light" onclick="refreshData()">
+                <i class="fas fa-sync-alt"></i> Refresh Data
+            </button>
         </div>
     </div>
 
     <!-- KPIs Section -->
-    <h3 class="mb-3">Key Performance Indicators</h3>
     <div id="kpis-container" class="kpi-grid" data-grid-size="{{ grid_size }}">
         {% for kpi in kpis %}
             {% if kpi.type == 'basic' %}
@@ -219,7 +331,6 @@
     </div>
 
     <!-- Charts Section -->
-    <h3 class="mt-5 mb-3">Charts</h3>
     <div id="charts-container" class="charts-grid">
         {% for chart in charts %}
             {% include 'components/chart_card.html' %}
@@ -300,5 +411,99 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('gridSizeDropdown').innerHTML = 
         `<i class="fas fa-th"></i> ${sizes[currentSize]}`;
 });
+
+let isCustomizing = false;
+
+function toggleCustomizeMode() {
+    isCustomizing = !isCustomizing;
+    document.body.classList.toggle('customize-mode', isCustomizing);
+    
+    const customizeBtn = document.getElementById('customize-btn');
+    customizeBtn.classList.toggle('active', isCustomizing);
+}
+
+function moveCard(btn, direction) {
+    const wrapper = btn.closest('.position-wrapper');
+    const container = wrapper.parentElement;
+    const items = Array.from(container.children);
+    const currentIndex = items.indexOf(wrapper);
+    
+    let newIndex = currentIndex;
+    const gridSize = parseInt(container.dataset.gridSize);
+    
+    switch(direction) {
+        case 'up':
+            newIndex = Math.max(0, currentIndex - gridSize);
+            break;
+        case 'down':
+            newIndex = Math.min(items.length - 1, currentIndex + gridSize);
+            break;
+        case 'left':
+            if (currentIndex % gridSize > 0) newIndex--;
+            break;
+        case 'right':
+            if (currentIndex % gridSize < gridSize - 1) newIndex++;
+            break;
+    }
+    
+    if (newIndex !== currentIndex) {
+        const target = items[newIndex];
+        if (newIndex > currentIndex) {
+            target.after(wrapper);
+        } else {
+            target.before(wrapper);
+        }
+        saveLayout();
+    }
+}
+
+function addSpacer(btn) {
+    const spacer = document.createElement('div');
+    spacer.className = 'card-spacer';
+    spacer.innerHTML = `
+        <button type="button" class="remove-spacer" onclick="removeSpacer(this)">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    btn.after(spacer);
+    saveLayout();
+}
+
+function removeSpacer(btn) {
+    const spacer = btn.closest('.card-spacer');
+    spacer.remove();
+    saveLayout();
+}
+
+function saveLayout() {
+    const container = document.getElementById('kpis-container');
+    const layout = {
+        items: Array.from(container.children).map((item, index) => {
+            if (item.classList.contains('card-spacer')) {
+                return { type: 'spacer', order: index };
+            } else if (item.classList.contains('position-wrapper')) {
+                const card = item.querySelector('.kpi-card');
+                return {
+                    type: 'card',
+                    id: card.dataset.kpiId,
+                    cardType: Array.from(card.classList).find(c => c.endsWith('-kpi')),
+                    order: index
+                };
+            }
+            return null;
+        }).filter(Boolean)
+    };
+    
+    fetch('/api/save_layout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(layout)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) console.error('Error saving layout:', data.error);
+    })
+    .catch(error => console.error('Error:', error));
+}
 </script>
 {% endblock %}

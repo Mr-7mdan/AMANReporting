@@ -184,65 +184,40 @@ def settings():
 @app.route('/stats')
 def stats():
     try:
-        # Get grid size preference with initialization
-        with db_manager.app_config_engine.begin() as conn:
-            # Check if UserPreferences table exists and has a default record
-            result = conn.execute(text("""
-                INSERT OR IGNORE INTO UserPreferences (id, grid_size, created_at, updated_at)
-                VALUES (1, 48, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            """))
+        # Get saved layout
+        with db_manager.app_config_engine.connect() as conn:
+            layout_result = conn.execute(
+                text("SELECT layout_data FROM UserLayouts WHERE id = 'default'")
+            ).fetchone()
             
-            # Get grid size (will now always exist)
+            layout = json.loads(layout_result.layout_data) if layout_result else None
+            logger.info(f"Retrieved layout: {layout}")
+            
+        # Get KPIs and calculate values
+        with db_manager.app_config_engine.connect() as conn:
+            kpis_result = conn.execute(text("SELECT * FROM KPIConfigurations")).fetchall()
+            logger.info(f"Retrieved {len(kpis_result)} KPI configurations")
+            
+            kpis = [kpi_manager.calculate_kpi_values(kpi) for kpi in kpis_result]
+            kpis = [item for sublist in kpis for item in sublist]  # Flatten list
+            logger.info(f"Calculated KPI values: {kpis}")
+        
+        # Get chart data
+        chart_data = chart_manager.get_chart_data()
+        
+        # Get grid size preference
+        with db_manager.app_config_engine.connect() as conn:
             result = conn.execute(text("SELECT grid_size FROM UserPreferences WHERE id = 1")).fetchone()
-            grid_size = result.grid_size if result else 48  # Fallback to default if query fails
-            
-            logger.info(f"Using grid size: {grid_size}")
-        
-        last_updated = get_last_updated()
-        
-        # Get KPIs from database and calculate their values
-        with db_manager.app_config_engine.connect() as conn:
-            kpi_configs = conn.execute(text("SELECT * FROM KPIConfigurations")).fetchall()
-            
-        # Calculate KPI values
-        kpis = []
-        for kpi_config in kpi_configs:
-            kpi_values = kpi_manager.calculate_kpi_values(kpi_config)
-            kpis.extend(kpi_values)
-        
-        # Get enabled charts
-        with db_manager.app_config_engine.connect() as conn:
-            charts = conn.execute(
-                text("SELECT * FROM ChartConfigurations WHERE is_enabled = 1")
-            ).fetchall()
-            
-        # Convert charts to list of dictionaries with their data
-        chart_data = []
-        for chart in charts:
-            # Convert SQLAlchemy Row to dictionary using _mapping
-            chart_dict = dict(chart._mapping)
-            
-            # Parse JSON strings
-            for field in ['x_axis', 'y_axis', 'time_spans']:
-                if chart_dict.get(field):
-                    try:
-                        chart_dict[field] = json.loads(chart_dict[field])
-                    except (json.JSONDecodeError, TypeError):
-                        logger.warning(f"Failed to parse {field} for chart {chart_dict.get('id')}")
-                        chart_dict[field] = None
-            
-            chart_data.append(chart_dict)
-        
-        logger.info(f"Rendering stats page with {len(kpis)} KPIs and {len(chart_data)} charts")
+            grid_size = result.grid_size if result else 48  # Default to 48 if not set
         
         return render_template('stats.html',
-                             last_updated=last_updated,
+                             last_updated=get_last_updated(),
                              kpis=kpis,
                              charts=chart_data,
                              grid_size=grid_size)
                              
     except Exception as e:
-        logger.error(f"Error rendering stats page: {str(e)}")
+        logger.error(f"Error rendering stats page: {str(e)}", exc_info=True)
         flash(f'Error loading statistics: {str(e)}', 'error')
         return redirect(url_for('index'))
 
@@ -728,15 +703,19 @@ def test_db_connection_route():
 @app.route('/api/save_layout', methods=['POST'])
 def save_layout():
     try:
-        layout_data = request.get_json()  # Use get_json() instead of .json
-        if not layout_data:
-            return jsonify({'error': 'No data provided'}), 400
-            
+        layout_data = request.json
         with db_manager.app_config_engine.begin() as conn:
+            # Save layout with timestamp
             conn.execute(
                 text("""
-                    INSERT OR REPLACE INTO UserLayouts (id, layout_data, updated_at)
-                    VALUES ('default', :layout_data, CURRENT_TIMESTAMP)
+                    INSERT OR REPLACE INTO UserLayouts 
+                    (id, layout_data, created_at, updated_at)
+                    VALUES (
+                        'default', 
+                        :layout_data, 
+                        COALESCE((SELECT created_at FROM UserLayouts WHERE id = 'default'), CURRENT_TIMESTAMP),
+                        CURRENT_TIMESTAMP
+                    )
                 """),
                 {'layout_data': json.dumps(layout_data)}
             )
