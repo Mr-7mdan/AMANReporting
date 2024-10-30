@@ -6,113 +6,173 @@
 <style>
 /* Container styles */
 .dashboard-container {
-    width: 100%;
-    max-width: 100%;
-    padding: 20px;
+    width: 100vw;  /* Full viewport width */
+    max-width: 100vw;  /* Ensure no horizontal scroll */
+    margin-left: calc(-50vw + 50%);  /* Negative margin to break out of parent container */
+    margin-right: calc(-50vw + 50%);
+    padding: 20px 40px;  /* Increased horizontal padding */
+    position: relative;  /* For proper positioning */
+    left: 50%;  /* Center the container */
+    right: 50%;
+    transform: translateX(-50%);  /* Perfect centering */
+}
+
+/* Override any parent container constraints */
+.container {
+    max-width: none !important;
+    padding: 0 !important;
 }
 
 /* KPI Grid Layout */
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(12, 1fr);  /* 12-column grid */
     gap: 20px;
     margin-bottom: 30px;
+    grid-auto-rows: min-content;
+    align-items: start;
+    padding: 0 20px;  /* Additional horizontal padding for grid */
 }
 
-/* Card sizing based on type */
-.kpi-card.basic-kpi {
-    grid-column: span 3;  /* Take up 3 columns */
-    min-height: 150px;
+/* Grid size variations */
+.kpi-grid[data-grid-size="48"] { 
+    grid-template-columns: repeat(48, 1fr);
+    font-size: 1rem;
 }
 
-.kpi-card.timespan-kpi {
-    grid-column: span 6;  /* Take up 6 columns */
-    min-height: 200px;
+.kpi-grid[data-grid-size="72"] { 
+    grid-template-columns: repeat(72, 1fr);
+    font-size: 0.95rem;
 }
 
-.kpi-card.dimensional-kpi {
-    grid-column: 1 / -1;  /* Full width */
-    overflow-x: auto;     /* Allow horizontal scroll for table */
+.kpi-grid[data-grid-size="96"] { 
+    grid-template-columns: repeat(96, 1fr);
+    font-size: 0.9rem;
 }
 
-/* Charts Grid */
-.charts-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);  /* 2 columns for charts */
-    gap: 20px;
+.kpi-grid[data-grid-size="144"] { 
+    grid-template-columns: repeat(144, 1fr);
+    font-size: 0.85rem;
 }
 
-.chart-container {
-    min-height: 400px;
-}
-
-/* Responsive adjustments */
-@media (max-width: 1400px) {
-    .kpi-card.basic-kpi {
-        grid-column: span 4;  /* 3 cards per row */
-    }
-    
-    .kpi-card.timespan-kpi {
-        grid-column: span 6;  /* 2 cards per row */
-    }
-}
-
-@media (max-width: 992px) {
-    .kpi-card.basic-kpi {
-        grid-column: span 6;  /* 2 cards per row */
-    }
-    
-    .kpi-card.timespan-kpi {
-        grid-column: 1 / -1;  /* Full width */
-    }
-    
-    .charts-grid {
-        grid-template-columns: 1fr;  /* Single column */
-    }
-}
-
-@media (max-width: 768px) {
-    .kpi-card.basic-kpi {
-        grid-column: 1 / -1;  /* Full width */
-    }
-}
-
-/* Base card styles */
+/* Card base styles */
 .kpi-card {
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    width: 100%;
+    height: fit-content !important;
+    min-height: unset !important;
     display: flex;
     flex-direction: column;
 }
 
-/* Dimensional table styles */
-.dimension-table {
+/* Content-based sizing for different card types */
+.kpi-card .kpi-content {
+    width: min-content;
+    min-width: 100%;
+}
+
+/* Grid spans for different card types and grid sizes */
+/* Large Grid (48) */
+.kpi-grid[data-grid-size="48"] .basic-kpi { 
+    grid-column: span 24;
+    min-width: max-content;
+}
+.kpi-grid[data-grid-size="48"] .timespan-kpi { 
+    grid-column: span 48;
+    min-width: max-content;
+}
+.kpi-grid[data-grid-size="48"] .dimensional-kpi { 
+    grid-column: span 48;
+    min-width: max-content;
+}
+
+/* Medium Grid (72) */
+.kpi-grid[data-grid-size="72"] .basic-kpi { 
+    grid-column: span 18;
+    min-width: max-content;
+}
+.kpi-grid[data-grid-size="72"] .timespan-kpi { 
+    grid-column: span 36;
+    min-width: max-content;
+}
+.kpi-grid[data-grid-size="72"] .dimensional-kpi { 
+    grid-column: span 36;
+    min-width: max-content;
+}
+
+/* Compact Grid (96) */
+.kpi-grid[data-grid-size="96"] .basic-kpi { 
+    grid-column: span 12;
+    min-width: max-content;
+}
+.kpi-grid[data-grid-size="96"] .timespan-kpi { 
+    grid-column: span 24;
+    min-width: max-content;
+}
+.kpi-grid[data-grid-size="96"] .dimensional-kpi { 
+    grid-column: span 24;
+    min-width: max-content;
+}
+
+/* Small Grid (144) */
+.kpi-grid[data-grid-size="144"] .basic-kpi { 
+    grid-column: span 8;
+    min-width: max-content;
+}
+.kpi-grid[data-grid-size="144"] .timespan-kpi { 
+    grid-column: span 16;
+    min-width: max-content;
+}
+.kpi-grid[data-grid-size="144"] .dimensional-kpi { 
+    grid-column: span 16;
+    min-width: max-content;
+}
+
+/* Ensure content doesn't overflow */
+.kpi-card .value-group,
+.kpi-card .timespan-row,
+.kpi-card .dimension-table {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
+    min-width: max-content;
 }
 
-.dimension-table th,
-.dimension-table td {
-    padding: 12px;
-    white-space: nowrap;
+/* Responsive adjustments */
+@media (max-width: 1600px) {
+    .kpi-grid[data-grid-size] .basic-kpi { grid-column: 1 / -1; }
+    .kpi-grid[data-grid-size] .timespan-kpi { grid-column: 1 / -1; }
+    .kpi-grid[data-grid-size] .dimensional-kpi { grid-column: 1 / -1; }
 }
 
-.dimension-table thead th {
-    background: #f8f9fa;
-    position: sticky;
-    top: 0;
-    z-index: 1;
+/* Charts Section */
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    padding: 0 20px;  /* Additional horizontal padding for grid */
 }
 
-/* Ensure content fills available space */
-.dimension-data {
-    overflow-x: auto;
-    margin: 0 -20px;
-    padding: 0 20px;
+/* Add padding to section headers */
+.dashboard-container h2,
+.dashboard-container h3 {
+    padding: 0 20px;  /* Match grid padding */
 }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .dashboard-container {
+        padding: 20px;  /* Reduce padding on mobile */
+    }
+    
+    .kpi-grid,
+    .charts-grid {
+        padding: 0 10px;  /* Reduce grid padding on mobile */
+    }
+    
+    .dashboard-container h2,
+    .dashboard-container h3 {
+        padding: 0 10px;  /* Match grid padding on mobile */
+    }
+}
+
+/* Rest of your existing styles... */
 </style>
 {% endblock %}
 
@@ -121,6 +181,17 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Statistics</h2>
         <div class="btn-group">
+            <div class="dropdown me-2">
+                <button class="btn btn-light dropdown-toggle" type="button" id="gridSizeDropdown" data-bs-toggle="dropdown">
+                    <i class="fas fa-th"></i> Grid Size
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="#" data-grid-size="48">Large</a></li>
+                    <li><a class="dropdown-item" href="#" data-grid-size="72">Medium</a></li>
+                    <li><a class="dropdown-item" href="#" data-grid-size="96">Compact</a></li>
+                    <li><a class="dropdown-item" href="#" data-grid-size="144">Small</a></li>
+                </ul>
+            </div>
             <button id="customize-btn" class="btn btn-light customize-btn" onclick="toggleCustomizeMode()">
                 <i class="fas fa-grip-vertical"></i> Customize Layout
             </button>
@@ -135,7 +206,7 @@
 
     <!-- KPIs Section -->
     <h3 class="mb-3">Key Performance Indicators</h3>
-    <div id="kpis-container" class="kpi-grid">
+    <div id="kpis-container" class="kpi-grid" data-grid-size="{{ grid_size }}">
         {% for kpi in kpis %}
             {% if kpi.type == 'basic' %}
                 {% include 'components/kpi_cards/basic_card.html' %}
@@ -160,4 +231,74 @@
 {% block scripts %}
 {{ super() }}
 <script src="{{ url_for('static', filename='js/stats.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Grid size dropdown handler
+    document.querySelectorAll('[data-grid-size]').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const newSize = parseInt(this.dataset.gridSize, 10);  // Convert to integer
+            console.log('Changing grid size to:', newSize);  // Log the new size
+            
+            const kpiGrid = document.getElementById('kpis-container');
+            
+            // Update grid size visually
+            kpiGrid.dataset.gridSize = newSize;
+            console.log('Applied grid size to container:', kpiGrid.dataset.gridSize);  // Log the applied size
+            
+            // Save preference to server
+            fetch('/api/save_grid_preference', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ grid_size: newSize })  // Send as number
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => Promise.reject(data.error));
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    console.error('Error saving grid preference:', data.error);
+                    // Revert to previous size if save failed
+                    kpiGrid.dataset.gridSize = '{{ grid_size }}';
+                    console.log('Reverted to previous grid size:', kpiGrid.dataset.gridSize);
+                } else {
+                    console.log('Successfully saved grid size:', newSize);
+                    // Update dropdown button text
+                    const sizes = {
+                        '48': 'Large',
+                        '72': 'Medium',
+                        '96': 'Compact',
+                        '144': 'Small'
+                    };
+                    document.getElementById('gridSizeDropdown').innerHTML = 
+                        `<i class="fas fa-th"></i> ${sizes[newSize]}`;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                // Revert to previous size if save failed
+                kpiGrid.dataset.gridSize = '{{ grid_size }}';
+                console.log('Reverted to previous grid size due to error:', kpiGrid.dataset.gridSize);
+            });
+        });
+    });
+
+    // Set initial dropdown text based on current grid size
+    const sizes = {
+        '48': 'Large',
+        '72': 'Medium',
+        '96': 'Compact',
+        '144': 'Small'
+    };
+    const currentSize = '{{ grid_size }}';
+    console.log('Initial grid size:', currentSize);  // Log initial size
+    document.getElementById('gridSizeDropdown').innerHTML = 
+        `<i class="fas fa-th"></i> ${sizes[currentSize]}`;
+});
+</script>
 {% endblock %}

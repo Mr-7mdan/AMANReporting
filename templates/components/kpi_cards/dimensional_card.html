@@ -1,55 +1,217 @@
 <!-- Dimensional KPI Card Template -->
 <div class="kpi-card dimensional-kpi" data-kpi-id="{{ kpi.id }}">
-    <div class="kpi-card-header">
-        <div class="kpi-title">
-            <h3>{{ kpi.name }}</h3>
-            <div class="dimension-tags">
+    <div class="kpi-content">
+        <div class="kpi-header">
+            <h3 class="kpi-title">{{ kpi.name }}</h3>
+            <div class="dimension-badges">
                 {% for dim in kpi.dimensions %}
-                <span class="dimension-tag">
+                <span class="dimension-badge">
                     <i class="fas fa-cube"></i> {{ dim }}
                 </span>
                 {% endfor %}
             </div>
         </div>
-    </div>
-    <div class="dimension-data">
-        <table class="dimension-table">
-            <thead>
-                <tr>
-                    {% for dim in kpi.dimensions %}
-                    <th>{{ dim }}</th>
+        <div class="dimension-data">
+            <table class="dimension-table">
+                <thead>
+                    <tr>
+                        {% for dim in kpi.dimensions %}
+                        <th class="text-start">{{ dim }}</th>
+                        {% endfor %}
+                        {% for span in kpi.dimensional_data[kpi.dimensional_data.keys()|list|first].time_spans %}
+                        <th class="time-span-column text-center">
+                            <span class="time-badge">{{ span.current_period|abbreviate_timespan }}</span>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for dim_key, data in kpi.dimensional_data.items() %}
+                    <tr>
+                        {% for value in data.dimension_values.values() %}
+                        <td class="text-start">{{ value }}</td>
+                        {% endfor %}
+                        {% for span in data.time_spans %}
+                        <td class="value-column">
+                            <div class="value-group">
+                                <div class="dim-value text-end">{{ span.current_value }}</div>
+                                <div class="time-badge-spacer text-center">vs</div>
+                                <div class="dim-change {{ 'positive' if span.change >= 0 else 'negative' }} text-start">
+                                    <i class="fas {{ 'fa-arrow-up' if span.change >= 0 else 'fa-arrow-down' }}"></i>
+                                    {{ span.change|abs }}%
+                                </div>
+                            </div>
+                        </td>
+                        {% endfor %}
+                    </tr>
                     {% endfor %}
-                    {% for span in kpi.dimensional_data[kpi.dimensional_data.keys()|list|first].time_spans %}
-                    <th class="value-column" colspan="2">
-                        <span class="time-badge">{{ span.current_period|abbreviate_timespan }}</span>
-                    </th>
-                    {% endfor %}
-                </tr>
-                <tr>
-                    {% for _ in kpi.dimensions %}
-                    <th></th>
-                    {% endfor %}
-                    {% for _ in kpi.dimensional_data[kpi.dimensional_data.keys()|list|first].time_spans %}
-                    <th class="value-column">Value</th>
-                    <th class="change-column">Change</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for dim_key, data in kpi.dimensional_data.items() %}
-                <tr>
-                    {% for value in data.dimension_values.values() %}
-                    <td>{{ value }}</td>
-                    {% endfor %}
-                    {% for span in data.time_spans %}
-                    <td class="value-column">{{ span.current_value }}</td>
-                    <td class="change-column {{ 'positive-change' if span.change >= 0 else 'negative-change' }}">
-                        {{ '↑' if span.change >= 0 else '↓' }} {{ span.change|abs }}%
-                    </td>
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                    <tr class="total-row">
+                        {% for dim in kpi.dimensions %}
+                        <td class="text-start"><strong>Total</strong></td>
+                        {% endfor %}
+                        {% for i in range(kpi.dimensional_data[kpi.dimensional_data.keys()|list|first].time_spans|length) %}
+                            {% set current_total = namespace(value=0, comparison=0) %}
+                            {% for dim_key, data in kpi.dimensional_data.items() %}
+                                {% if data.time_spans[i] is defined %}
+                                    {% set span = data.time_spans[i] %}
+                                    {% set current_value = span.current_value|string|replace(',', '')|float %}
+                                    {% set comparison_value = span.comparison_value|string|replace(',', '')|float %}
+                                    {% set current_total.value = current_total.value + current_value %}
+                                    {% set current_total.comparison = current_total.comparison + comparison_value %}
+                                {% endif %}
+                            {% endfor %}
+                            {% set total_change = ((current_total.value - current_total.comparison) / current_total.comparison * 100) if current_total.comparison != 0 else 0 %}
+                            <td class="value-column">
+                                <div class="value-group">
+                                    <div class="dim-value text-end"><strong>{{ '{:,.0f}'.format(current_total.value) }}</strong></div>
+                                    <div class="time-badge-spacer text-center">vs</div>
+                                    <div class="dim-change {{ 'positive' if total_change >= 0 else 'negative' }} text-start">
+                                        <i class="fas {{ 'fa-arrow-up' if total_change >= 0 else 'fa-arrow-down' }}"></i>
+                                        {{ '{:.1f}'.format(total_change|abs) }}%
+                                    </div>
+                                </div>
+                            </td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
+
+<style>
+.dimensional-kpi {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: 100%;
+}
+
+.dimensional-kpi .kpi-content {
+    padding: 1rem;
+}
+
+.dimensional-kpi .kpi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.dimensional-kpi .kpi-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #495057;
+    margin: 0;
+}
+
+.dimensional-kpi .dimension-badges {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.dimensional-kpi .dimension-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    background: #f8f9fa;
+    border-radius: 3px;
+    color: #495057;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.dimensional-kpi .dimension-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.85rem;
+}
+
+.dimensional-kpi .dimension-table th,
+.dimensional-kpi .dimension-table td {
+    padding: 0.5rem;
+    white-space: nowrap;
+}
+
+.dimensional-kpi .dimension-table th {
+    background: #f8f9fa;
+    font-weight: 700;
+    color: #495057;
+    font-size: 0.9rem;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.75rem 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dimensional-kpi .dimension-table tr:nth-child(even) {
+    background-color: #fafafa;
+}
+
+.dimensional-kpi .value-group {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.dimensional-kpi .time-badge-spacer {
+    font-size: 0.75rem;
+    color: #6c757d;
+    padding: 0 0.25rem;
+}
+
+.dimensional-kpi .dim-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    min-width: 80px;
+}
+
+.dimensional-kpi .dim-change {
+    font-size: 0.8rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
+    min-width: 60px;
+}
+
+.dimensional-kpi .dim-change.positive { color: #198754; }
+.dimensional-kpi .dim-change.negative { color: #dc3545; }
+
+.dimensional-kpi .total-row {
+    border-top: 2px solid #dee2e6;
+    background-color: #f8f9fa !important;
+}
+
+.dimensional-kpi .total-row .dim-value {
+    font-size: 1rem;
+}
+
+.dimensional-kpi .value-column {
+    min-width: 200px;
+    padding: 0.5rem !important;
+}
+
+/* Add text alignment utilities */
+.text-start { text-align: left !important; }
+.text-end { text-align: right !important; }
+.text-center { text-align: center !important; }
+
+/* Time span header alignment */
+.dimensional-kpi .time-span-column {
+    text-align: center !important;
+}
+
+.dimensional-kpi .time-badge {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    background: #f8f9fa;
+    border-radius: 3px;
+    color: #495057;
+}
+</style>

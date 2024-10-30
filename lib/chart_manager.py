@@ -199,32 +199,55 @@ class ChartManager:
     def save_chart(self, chart_data):
         """Save or update a chart configuration"""
         try:
+            logger.info(f"Saving chart data: {chart_data}")
+            
+            # Ensure JSON fields are properly serialized
+            for field in ['x_axis', 'y_axis', 'time_spans']:
+                if field in chart_data and isinstance(chart_data[field], (dict, list)):
+                    chart_data[field] = json.dumps(chart_data[field])
+            
+            # Set default values for new charts
+            if not chart_data.get('id'):
+                chart_data['is_enabled'] = True
+                chart_data['created_at'] = datetime.now()
+                chart_data['updated_at'] = datetime.now()
+            else:
+                chart_data['updated_at'] = datetime.now()
+            
             with self.db_manager.app_config_engine.begin() as conn:
                 if chart_data.get('id'):  # Update existing chart
+                    logger.info(f"Updating existing chart {chart_data['id']}")
                     conn.execute(
                         text("""
                             UPDATE ChartConfigurations 
-                            SET name=:name, table_name=:table_name, x_axis=:x_axis,
-                                y_axis=:y_axis, chart_type=:chart_type,
+                            SET name=:name, 
+                                table_name=:table_name, 
+                                x_axis=:x_axis,
+                                y_axis=:y_axis, 
+                                chart_type=:chart_type,
                                 time_spans=:time_spans,
-                                updated_at=CURRENT_TIMESTAMP
+                                updated_at=:updated_at
                             WHERE id=:id
                         """),
                         chart_data
                     )
                 else:  # Create new chart
+                    logger.info("Creating new chart")
                     conn.execute(
                         text("""
                             INSERT INTO ChartConfigurations 
                             (name, table_name, x_axis, y_axis, chart_type, 
-                             time_spans, is_enabled)
+                             time_spans, is_enabled, created_at, updated_at)
                             VALUES 
                             (:name, :table_name, :x_axis, :y_axis, :chart_type,
-                             :time_spans, :is_enabled)
+                             :time_spans, :is_enabled, :created_at, :updated_at)
                         """),
                         chart_data
                     )
-            return True
+                
+                logger.info("Chart saved successfully")
+                return True
+                
         except Exception as e:
             logger.error(f"Error saving chart: {str(e)}")
             return False

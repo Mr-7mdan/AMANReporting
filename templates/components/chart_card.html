@@ -1,16 +1,124 @@
 <!-- Chart Card Template -->
 <div class="chart-container" data-chart-id="{{ chart.id }}">
-    <div class="chart-header">
-        <h3>{{ chart.name }}</h3>
-        <div class="chart-badges">
-            {% for span in chart.time_spans %}
-            <span class="time-badge">
-                {{ span[0]|abbreviate_timespan }} vs {{ span[1]|abbreviate_timespan }}
-            </span>
-            {% endfor %}
+    <div class="chart-card">
+        <div class="chart-card-header">
+            <h3>{{ chart.name }}</h3>
+            <div class="chart-metadata">
+                {% if chart.time_spans %}
+                    <div class="time-span-badges">
+                        {% for span in chart.time_spans %}
+                            <span class="time-badge">
+                                {{ span[0]|abbreviate_timespan }} vs {{ span[1]|abbreviate_timespan }}
+                            </span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                {% if chart.y_axis %}
+                    {% set y_axis = chart.y_axis|from_json if chart.y_axis is string else chart.y_axis %}
+                    {% for measure in y_axis %}
+                        {% if measure.conditions %}
+                            <div class="condition-badges">
+                                {% for condition in measure.conditions %}
+                                    <span class="condition-badge" data-operator="{{ condition.operator }}">
+                                        <i class="fas fa-filter"></i>
+                                        {{ condition|format_condition }}
+                                    </span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="chart-canvas-{{ chart.id }}"></canvas>
         </div>
     </div>
-    <div class="chart-wrapper">
-        <canvas id="chart-canvas-{{ chart.id }}"></canvas>
-    </div>
 </div>
+
+<style>
+.chart-container {
+    margin-bottom: 20px;
+}
+
+.chart-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.chart-card-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.chart-card-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #212529;
+}
+
+.chart-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.time-badge {
+    background: #e9ecef;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: #495057;
+}
+
+.condition-badge {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    color: white;
+    display: inline-flex;
+    align-items: center;
+}
+
+.condition-badge[data-operator="="] { background-color: #0d6efd; }
+.condition-badge[data-operator="!="] { background-color: #dc3545; }
+.condition-badge[data-operator=">"] { background-color: #198754; }
+.condition-badge[data-operator=">="] { background-color: #20c997; }
+.condition-badge[data-operator="<"] { background-color: #fd7e14; }
+.condition-badge[data-operator="<="] { background-color: #ffc107; }
+
+.condition-badge i {
+    margin-right: 0.3rem;
+    font-size: 0.7rem;
+}
+
+.chart-wrapper {
+    padding: 20px;
+    flex-grow: 1;
+    min-height: 400px;
+    position: relative;
+}
+
+/* Customize mode styles */
+.customize-mode .chart-card {
+    cursor: move;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.customize-mode .chart-card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+}
+
+.customize-mode .chart-card.dragging {
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    opacity: 0.8;
+}
+</style>

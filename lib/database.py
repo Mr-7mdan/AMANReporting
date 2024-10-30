@@ -109,6 +109,14 @@ class DatabaseManager:
             Column('status', String)  # completed, error
         )
 
+        # Add this to the setup_tables method
+        self.UserPreferences = Table('UserPreferences', self.metadata,
+            Column('id', Integer, primary_key=True),
+            Column('grid_size', Integer, default=48),  # 48, 72, 96, or 144
+            Column('created_at', DateTime),
+            Column('updated_at', DateTime)
+        )
+
     def create_local_engine(self):
         """Create engine for AMANReporting.db (data storage)"""
         return create_engine(

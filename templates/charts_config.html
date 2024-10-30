@@ -61,40 +61,47 @@
 }
 
 .chart-type-selector {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    display: flex;
     gap: 1rem;
-    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
 }
 
 .chart-type-option {
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     padding: 1rem;
     border: 2px solid #dee2e6;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
+    min-width: 100px;
 }
 
 .chart-type-option:hover {
     border-color: #0d6efd;
-    background: #f8f9fa;
+    background-color: rgba(13, 110, 253, 0.05);
 }
 
 .chart-type-option.selected {
     border-color: #0d6efd;
-    background: #e7f1ff;
+    background-color: rgba(13, 110, 253, 0.1);
 }
 
 .chart-type-option i {
-    font-size: 2rem;
+    font-size: 1.5rem;
     margin-bottom: 0.5rem;
+    color: #495057;
+}
+
+.chart-type-option.selected i {
     color: #0d6efd;
 }
 
 .chart-type-option span {
-    display: block;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
+    color: #495057;
 }
 
 /* Toggle switch for chart enable/disable */
@@ -363,31 +370,7 @@ input:checked + .toggle-slider:before {
                                 <div class="measure-conditions mt-3">
                                     <label>Measure Conditions</label>
                                     <div class="conditions-container">
-                                        <div class="condition-row">
-                                            <div class="row">
-                                                <div class="col">
-                                                    <select class="form-control condition-field" disabled>
-                                                        <option value="">Select a table first</option>
-                                                    </select>
-                                                </div>
-                                                <div class="col">
-                                                    <select class="form-control condition-operator">
-                                                        <option value="=">=</option>
-                                                        <option value="!=">!=</option>
-                                                        <option value=">">&gt;</option>
-                                                        <option value=">=">&gt;=</option>
-                                                        <option value="<">&lt;</option>
-                                                        <option value="<=">&lt;=</option>
-                                                    </select>
-                                                </div>
-                                                <div class="col">
-                                                    <input type="text" class="form-control condition-value" placeholder="Value">
-                                                </div>
-                                                <div class="col-auto">
-                                                    <button type="button" class="btn btn-danger remove-condition">&times;</button>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        <!-- No default condition row here -->
                                     </div>
                                     <button type="button" class="btn btn-secondary btn-sm mt-2 add-condition">
                                         <i class="fas fa-plus"></i> Add Condition
@@ -403,24 +386,46 @@ input:checked + .toggle-slider:before {
                     <div class="form-group">
                         <label>Chart Type</label>
                         <div class="chart-type-selector">
-                            {% for type in chart_types %}
-                            <div class="chart-type-option" data-type="{{ type.id }}">
-                                {% if type.id == 'column' %}
-                                    <i class="fas fa-chart-bar"></i>
-                                {% elif type.id == 'stacked_column' %}
-                                    <i class="fas fa-layer-group"></i>
-                                {% elif type.id == 'bar' %}
-                                    <i class="fas fa-chart-bar fa-rotate-90"></i>
-                                {% elif type.id == 'line' %}
-                                    <i class="fas fa-chart-line"></i>
-                                {% elif type.id == 'scatter' %}
-                                    <i class="fas fa-braille"></i>
-                                {% elif type.id == 'pie' %}
-                                    <i class="fas fa-chart-pie"></i>
-                                {% endif %}
-                                <span>{{ type.name }}</span>
+                            <div class="chart-type-option" data-type="line">
+                                <i class="fas fa-chart-line"></i>
+                                <span>Line Chart</span>
                             </div>
-                            {% endfor %}
+                            <div class="chart-type-option" data-type="bar">
+                                <i class="fas fa-chart-bar"></i>
+                                <span>Bar Chart</span>
+                            </div>
+                            <div class="chart-type-option" data-type="column">
+                                <i class="fas fa-chart-bar fa-rotate-90"></i>
+                                <span>Column Chart</span>
+                            </div>
+                            <div class="chart-type-option" data-type="pie">
+                                <i class="fas fa-chart-pie"></i>
+                                <span>Pie Chart</span>
+                            </div>
+                            <div class="chart-type-option" data-type="doughnut">
+                                <i class="fas fa-circle-notch"></i>
+                                <span>Doughnut Chart</span>
+                            </div>
+                            <div class="chart-type-option" data-type="area">
+                                <i class="fas fa-chart-area"></i>
+                                <span>Area Chart</span>
+                            </div>
+                            <div class="chart-type-option" data-type="radar">
+                                <i class="fas fa-spider"></i>
+                                <span>Radar Chart</span>
+                            </div>
+                            <div class="chart-type-option" data-type="bubble">
+                                <i class="fas fa-circle"></i>
+                                <span>Bubble Chart</span>
+                            </div>
+                            <div class="chart-type-option" data-type="scatter">
+                                <i class="fas fa-dot-circle"></i>
+                                <span>Scatter Plot</span>
+                            </div>
+                            <div class="chart-type-option" data-type="polarArea">
+                                <i class="fas fa-circle-notch"></i>
+                                <span>Polar Area</span>
+                            </div>
                         </div>
                     </div>
                     <!-- Add this after the Chart Type section -->
@@ -694,7 +699,7 @@ $(document).ready(function() {
     // Remove entire measure
     $(document).on('click', '.remove-measure', function() {
         const measureSteps = $('#measure_steps');
-        if (measureSteps.children().length > 1) {
+        if (measureSteps.children('.measure-step').length > 1) {
             $(this).closest('.measure-step').remove();
         } else {
             alert('Cannot remove the last measure');
@@ -706,6 +711,10 @@ $(document).ready(function() {
         const calculationSteps = $(this).closest('.calculation-steps');
         if (calculationSteps.children('.calculation-step').length > 1) {
             $(this).closest('.calculation-step').remove();
+            
+            // Update operator visibility for first step
+            const firstStep = calculationSteps.children('.calculation-step').first();
+            firstStep.find('.operator-section').hide();
         } else {
             alert('Cannot remove the last calculation step');
         }
@@ -740,10 +749,13 @@ $(document).ready(function() {
 
     // Remove condition button click handler
     $(document).on('click', '.remove-condition', function() {
-        const conditionRow = $(this).closest('.condition-row');
-        const conditionsContainer = conditionRow.parent();
-        if (conditionsContainer.children().length > 1) {
-            conditionRow.remove();
+        const conditionsContainer = $(this).closest('.conditions-container');
+        if (conditionsContainer.children('.condition-row').length > 1) {
+            $(this).closest('.condition-row').remove();
+        } else {
+            // If it's the last condition, just clear the values
+            const row = $(this).closest('.condition-row');
+            row.find('select, input').val('');
         }
     });
 

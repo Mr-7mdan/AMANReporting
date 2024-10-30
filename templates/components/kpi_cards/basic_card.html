@@ -1,13 +1,65 @@
 <!-- Basic KPI Card Template -->
 <div class="kpi-card basic-kpi" data-kpi-id="{{ kpi.id }}">
-    <div class="kpi-card-header">
-        <h3>{{ kpi.name }}</h3>
-    </div>
-    <div class="current-value">{{ kpi.current_value }}</div>
-    <div class="comparison">
-        <div class="change {{ 'positive-change' if kpi.change >= 0 else 'negative-change' }}">
-            {{ '↑' if kpi.change >= 0 else '↓' }} {{ kpi.change|abs }}%
+    <div class="kpi-content">
+        <h3 class="kpi-title">{{ kpi.name }}</h3>
+        <div class="kpi-data">
+            <div class="kpi-value text-end">{{ kpi.current_value }}</div>
+            <div class="change {{ 'positive' if kpi.change >= 0 else 'negative' }} text-start">
+                <i class="fas {{ 'fa-arrow-up' if kpi.change >= 0 else 'fa-arrow-down' }}"></i>
+                {{ kpi.change|abs }}%
+            </div>
         </div>
-        <div class="vs-period">vs {{ kpi.comparison_period }}</div>
+        <div class="vs-period">vs {{ kpi.comparison_period|abbreviate_timespan }}</div>
     </div>
 </div>
+
+<style>
+.basic-kpi {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: 100%;
+}
+
+.basic-kpi .kpi-content {
+    padding: 1rem;
+}
+
+.basic-kpi .kpi-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #495057;
+    margin: 0 0 0.5rem 0;
+}
+
+.basic-kpi .kpi-data {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+.basic-kpi .kpi-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.basic-kpi .change {
+    font-weight: 600;
+    font-size: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
+}
+
+.basic-kpi .change.positive { color: #198754; }
+.basic-kpi .change.negative { color: #dc3545; }
+
+.basic-kpi .vs-period {
+    color: #6c757d;
+    font-size: 0.75rem;
+}
+</style>

@@ -46,6 +46,7 @@ def from_json_filter(value):
 
 @app.template_filter('abbreviate_timespan')
 def abbreviate_timespan_filter(value):
+    """Convert time span names to abbreviations"""
     abbreviations = {
         'Today': 'Today',
         'Yesterday': 'Yday',
@@ -58,13 +59,23 @@ def abbreviate_timespan_filter(value):
 
 @app.template_filter('operator_symbol')
 def operator_symbol_filter(value):
+    """Convert operator to symbol"""
     symbols = {
-        '+': '+',
-        '-': '−',
-        '*': '×',
-        '/': '÷'
+        '=': '=',
+        '!=': '≠',
+        '>': '>',
+        '>=': '≥',
+        '<': '<',
+        '<=': '≤'
     }
     return symbols.get(value, value)
+
+@app.template_filter('format_condition')
+def format_condition_filter(condition):
+    """Format condition for display"""
+    if isinstance(condition, str):
+        condition = json.loads(condition)
+    return f"{condition['field']} {operator_symbol_filter(condition['operator'])} {condition['value']}"
 
 # Error handlers
 @app.errorhandler(404)
@@ -173,6 +184,20 @@ def settings():
 @app.route('/stats')
 def stats():
     try:
+        # Get grid size preference with initialization
+        with db_manager.app_config_engine.begin() as conn:
+            # Check if UserPreferences table exists and has a default record
+            result = conn.execute(text("""
+                INSERT OR IGNORE INTO UserPreferences (id, grid_size, created_at, updated_at)
+                VALUES (1, 48, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """))
+            
+            # Get grid size (will now always exist)
+            result = conn.execute(text("SELECT grid_size FROM UserPreferences WHERE id = 1")).fetchone()
+            grid_size = result.grid_size if result else 48  # Fallback to default if query fails
+            
+            logger.info(f"Using grid size: {grid_size}")
+        
         last_updated = get_last_updated()
         
         # Get KPIs from database and calculate their values
@@ -213,10 +238,11 @@ def stats():
         return render_template('stats.html',
                              last_updated=last_updated,
                              kpis=kpis,
-                             charts=chart_data)
+                             charts=chart_data,
+                             grid_size=grid_size)
                              
     except Exception as e:
-        logger.error(f"Error rendering stats page: {str(e)}", exc_info=True)
+        logger.error(f"Error rendering stats page: {str(e)}")
         flash(f'Error loading statistics: {str(e)}', 'error')
         return redirect(url_for('index'))
 
@@ -1316,22 +1342,35 @@ def save_kpi():
 @app.route('/get_table_columns/<table_name>')
 def get_table_columns(table_name):
     try:
-        # Get column information from the remote database
-        source_engine = db_manager.get_remote_engine()
-        with source_engine.connect() as conn:
-            inspector = inspect(source_engine)
-            columns = []
-            for column in inspector.get_columns(table_name):
-                columns.append({
-                    'name': column['name'],
-                    'type': str(column['type']),
-                    'nullable': column['nullable']
-                })
+        # Get column information from both local and remote databases
+        local_engine = db_manager.local_engine
+        remote_engine = db_manager.get_remote_engine()
+        
+        columns = []
+        
+        # Try local database first
+        try:
+            with local_engine.connect() as conn:
+                inspector = inspect(local_engine)
+                columns = [column['name'] for column in inspector.get_columns(table_name)]
+                logger.info(f"Retrieved {len(columns)} columns from local database for table {table_name}")
+        except Exception as local_error:
+            logger.warning(f"Could not get columns from local database: {str(local_error)}")
             
-            # Return column names as a simple list for dropdowns
-            column_names = [col['name'] for col in columns]
-            logger.info(f"Retrieved {len(column_names)} columns for table {table_name}")
-            return jsonify(column_names)
+            # If local fails, try remote database
+            try:
+                with remote_engine.connect() as conn:
+                    inspector = inspect(remote_engine)
+                    columns = [column['name'] for column in inspector.get_columns(table_name)]
+                    logger.info(f"Retrieved {len(columns)} columns from remote database for table {table_name}")
+            except Exception as remote_error:
+                logger.error(f"Could not get columns from remote database: {str(remote_error)}")
+                raise Exception(f"Failed to get columns from both databases for table {table_name}")
+        
+        if not columns:
+            raise Exception(f"No columns found for table {table_name}")
+            
+        return jsonify(columns)
             
     except Exception as e:
         logger.error(f"Error getting columns for table {table_name}: {str(e)}")
@@ -1472,6 +1511,42 @@ def fetch_manually(type, id):
         
     except Exception as e:
         logger.error(f"Error initiating manual fetch: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save_grid_preference', methods=['POST'])
+def save_grid_preference():
+    try:
+        data = request.json
+        grid_size = data.get('grid_size')
+        
+        # Validate grid size
+        if not isinstance(grid_size, (int, float)) or grid_size not in [48, 72, 96, 144]:
+            logger.error(f"Invalid grid size received: {grid_size}")
+            return jsonify({'error': f'Invalid grid size: {grid_size}. Must be one of: 48, 72, 96, 144'}), 400
+        
+        grid_size = int(grid_size)  # Ensure it's an integer
+        logger.info(f"Saving grid size preference: {grid_size}")
+        
+        with db_manager.app_config_engine.begin() as conn:
+            # Update or insert grid size preference
+            conn.execute(
+                text("""
+                    INSERT OR REPLACE INTO UserPreferences 
+                    (id, grid_size, created_at, updated_at)
+                    VALUES (
+                        1, 
+                        :grid_size, 
+                        COALESCE((SELECT created_at FROM UserPreferences WHERE id = 1), CURRENT_TIMESTAMP),
+                        CURRENT_TIMESTAMP
+                    )
+                """),
+                {'grid_size': grid_size}
+            )
+            logger.info(f"Successfully saved grid size: {grid_size}")
+            
+        return jsonify({'success': True, 'grid_size': grid_size})
+    except Exception as e:
+        logger.error(f"Error saving grid preference: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Main execution

@@ -1,26 +1,134 @@
 <!-- Multi-timespan KPI Card Template -->
 <div class="kpi-card timespan-kpi" data-kpi-id="{{ kpi.id }}">
-    <div class="kpi-card-header">
-        <h3>{{ kpi.name }}</h3>
-    </div>
-    <div class="timespan-grid">
-        {% for span in kpi.timespan_data %}
-        <div class="timespan-item">
-            <div class="timespan-header">
-                <span class="time-badge">{{ span.current_period|abbreviate_timespan }}</span>
-            </div>
-            <div class="timespan-content">
-                <div class="current-value">{{ span.current_value }}</div>
-                <div class="comparison">
-                    <div class="change {{ 'positive-change' if span.change >= 0 else 'negative-change' }}">
-                        {{ '↑' if span.change >= 0 else '↓' }} {{ span.change|abs }}%
-                    </div>
-                    <div class="vs-period">
-                        vs <span class="time-badge small">{{ span.comparison_period|abbreviate_timespan }}</span>
+    <div class="kpi-content">
+        <div class="kpi-header">
+            <h3 class="kpi-title">{{ kpi.name }}</h3>
+            {% if kpi.conditions %}
+                <div class="condition-badges">
+                    {% for condition in kpi.conditions|from_json %}
+                        <span class="condition-badge" data-operator="{{ condition.operator }}">
+                            <i class="fas fa-filter"></i>
+                            {{ condition|format_condition }}
+                        </span>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        <div class="timespan-grid">
+            {% for span in kpi.timespan_data %}
+            <div class="timespan-row">
+                <div class="timespan-label">
+                    <span class="time-badge">{{ span.current_period|abbreviate_timespan }}</span>
+                    <span class="vs">vs</span>
+                    <span class="time-badge">{{ span.comparison_period|abbreviate_timespan }}</span>
+                </div>
+                <div class="value-group">
+                    <div class="current-value text-end">{{ span.current_value }}</div>
+                    <div class="change {{ 'positive' if span.change >= 0 else 'negative' }} text-start">
+                        <i class="fas {{ 'fa-arrow-up' if span.change >= 0 else 'fa-arrow-down' }}"></i>
+                        {{ span.change|abs }}%
                     </div>
                 </div>
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
     </div>
 </div>
+
+<style>
+.timespan-kpi {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: 100%;
+}
+
+.timespan-kpi .kpi-content {
+    padding: 1rem;
+}
+
+.timespan-kpi .kpi-header {
+    margin-bottom: 0.75rem;
+}
+
+.timespan-kpi .kpi-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #495057;
+    margin: 0 0 0.25rem 0;
+}
+
+.timespan-kpi .timespan-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2rem;
+    align-items: center;
+    padding: 0.5rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.timespan-kpi .timespan-row:last-child {
+    border-bottom: none;
+}
+
+.timespan-kpi .timespan-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+}
+
+.timespan-kpi .time-badge {
+    background: #f8f9fa;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    color: #495057;
+}
+
+.timespan-kpi .vs {
+    color: #6c757d;
+    font-size: 0.75rem;
+}
+
+.timespan-kpi .value-group {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: center;
+}
+
+.timespan-kpi .current-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    min-width: 100px;
+}
+
+.timespan-kpi .change {
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
+    min-width: 80px;
+}
+
+.timespan-kpi .change.positive { color: #198754; }
+.timespan-kpi .change.negative { color: #dc3545; }
+
+.timespan-kpi .condition-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.timespan-kpi .condition-badge {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    color: white;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+</style>
